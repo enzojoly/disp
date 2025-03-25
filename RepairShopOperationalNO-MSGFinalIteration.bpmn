@@ -86,7 +86,7 @@
       <bpmn:extensionElements>
         <zeebe:taskDefinition type="InitialCostCheck" />
         <zeebe:ioMapping>
-          <zeebe:input target="InputVariable_0r7vrb7" />
+          <zeebe:input source="=isMember" target="InputVariable_1ndksl9" />
         </zeebe:ioMapping>
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1yyzizz</bpmn:incoming>
