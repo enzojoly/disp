@@ -35,7 +35,6 @@
       <bpmn:lane id="Lane_1tq057o" name="Receptionist">
         <bpmn:extensionElements />
         <bpmn:flowNodeRef>Event_01f2boo</bpmn:flowNodeRef>
-        <bpmn:flowNodeRef>Activity_10d10g3</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_1dxjko5</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_1ods7z1</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_1tdj1nq</bpmn:flowNodeRef>
@@ -51,6 +50,7 @@
         <bpmn:flowNodeRef>Activity_1f1y01m</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_06d1qyy</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_1ml0a7y</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_10d10g3</bpmn:flowNodeRef>
       </bpmn:lane>
     </bpmn:laneSet>
     <bpmn:userTask id="Activity_18k98oy" name="Perform rigourous testing">
@@ -74,7 +74,7 @@
       <bpmn:incoming>Flow_11393jn</bpmn:incoming>
       <bpmn:outgoing>Flow_00wlo82</bpmn:outgoing>
     </bpmn:sendTask>
-    <bpmn:userTask id="Activity_1g5ymwb" name="Verify Repair approval">
+    <bpmn:userTask id="Activity_1g5ymwb" name="Verify customer satisfaction">
       <bpmn:extensionElements>
         <zeebe:userTask />
         <zeebe:formDefinition formId="verify-repair-approval-1q57stk" />
@@ -91,10 +91,6 @@
     <bpmn:startEvent id="Event_01f2boo" name="Recieve contact from customer">
       <bpmn:outgoing>Flow_015cw5y</bpmn:outgoing>
     </bpmn:startEvent>
-    <bpmn:task id="Activity_10d10g3" name="Recieve Approval form">
-      <bpmn:incoming>Flow_03prc27</bpmn:incoming>
-      <bpmn:outgoing>Flow_1b1f1el</bpmn:outgoing>
-    </bpmn:task>
     <bpmn:receiveTask id="Activity_15blyu4" name="Receive Towing Request" messageRef="Message_1t3qq3b">
       <bpmn:incoming>Flow_1imt80x</bpmn:incoming>
       <bpmn:outgoing>Flow_0s3c7ae</bpmn:outgoing>
@@ -269,8 +265,8 @@
     </bpmn:serviceTask>
     <bpmn:sequenceFlow id="Flow_0vm3i26" sourceRef="Activity_1d73lio" targetRef="Activity_18k98oy" />
     <bpmn:sequenceFlow id="Flow_11opvc4" sourceRef="Activity_18k98oy" targetRef="Gateway_092wnb4" />
-    <bpmn:sequenceFlow id="Flow_1mff4nj" name="no&#10;" sourceRef="Gateway_092wnb4" targetRef="Gateway_1o45d1m">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=TestsPassed = false</bpmn:conditionExpression>
+    <bpmn:sequenceFlow id="Flow_1mff4nj" name="No&#10;" sourceRef="Gateway_092wnb4" targetRef="Gateway_1o45d1m">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=TestsPassed == false</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_11393jn" name="yes&#10;" sourceRef="Gateway_092wnb4" targetRef="Activity_01fxwqp">
       <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=TestsPassed</bpmn:conditionExpression>
@@ -279,11 +275,10 @@
     <bpmn:sequenceFlow id="Flow_072cxn4" sourceRef="Activity_0fblu15" targetRef="Activity_1g5ymwb" />
     <bpmn:sequenceFlow id="Flow_03prc27" sourceRef="Activity_1g5ymwb" targetRef="Activity_10d10g3" />
     <bpmn:sequenceFlow id="Flow_1pe3eoa" name="Yes" sourceRef="Gateway_13a1jxg" targetRef="Gateway_1o45d1m">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=QuoteApproved
-</bpmn:conditionExpression>
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=QuoteApproved</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id="Flow_097whgb" name="no" sourceRef="Gateway_12fe6pg" targetRef="Gateway_1o45d1m">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=customerSatisfied = false</bpmn:conditionExpression>
+    <bpmn:sequenceFlow id="Flow_097whgb" name="No" sourceRef="Gateway_12fe6pg" targetRef="Gateway_1o45d1m">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=CustomerSatisfied == false</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_1rpzex2" sourceRef="Gateway_1o45d1m" targetRef="Activity_1d73lio" />
     <bpmn:sequenceFlow id="Flow_015cw5y" sourceRef="Event_01f2boo" targetRef="Activity_1stb38f" />
@@ -293,7 +288,7 @@
     <bpmn:sequenceFlow id="Flow_0zdt9ta" sourceRef="Gateway_1jeq63o" targetRef="Activity_1lhf4vx" />
     <bpmn:sequenceFlow id="Flow_0tltfg9" sourceRef="Activity_1lhf4vx" targetRef="Activity_12j5gdb" />
     <bpmn:sequenceFlow id="Flow_1r09uwm" name="No" sourceRef="Gateway_13a1jxg" targetRef="Activity_1dxjko5">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=QuoteApproved = false</bpmn:conditionExpression>
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=QuoteApproved == false</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_1ohnr7q" sourceRef="Activity_1dxjko5" targetRef="Activity_1mod3n1" />
     <bpmn:sequenceFlow id="Flow_1xjxr3m" sourceRef="Activity_14oywxh" targetRef="Activity_1ods7z1" />
@@ -317,13 +312,20 @@
       <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=Breakdown</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_1uc340h" name="No" sourceRef="Gateway_1v44zl1" targetRef="Activity_0yfoilb">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=Breakdown = false</bpmn:conditionExpression>
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=Breakdown == false</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_0rd8ijc" sourceRef="Activity_010rkbr" targetRef="Activity_06d1qyy" />
     <bpmn:sequenceFlow id="Flow_067o8ra" sourceRef="Activity_0gemlqi" targetRef="Activity_1gm3exs" />
     <bpmn:sequenceFlow id="Flow_07ay6cp" sourceRef="Activity_1f1y01m" targetRef="Activity_1vetocd" />
     <bpmn:sequenceFlow id="Flow_0hveqlx" sourceRef="Activity_1vetocd" targetRef="Activity_0gemlqi" />
     <bpmn:sequenceFlow id="Flow_1a0uwse" sourceRef="Activity_12j5gdb" targetRef="Activity_1ciz5r9" />
+    <bpmn:serviceTask id="Activity_10d10g3" name="Process customer satisfaction">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="process-satisfaction" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_03prc27</bpmn:incoming>
+      <bpmn:outgoing>Flow_1b1f1el</bpmn:outgoing>
+    </bpmn:serviceTask>
   </bpmn:process>
   <bpmn:message id="Message_0194njs" name="Message_0194njs">
     <bpmn:extensionElements>
@@ -387,6 +389,7 @@
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_1pi95v2_di" bpmnElement="Activity_1g5ymwb">
         <dc:Bounds x="2857" y="125" width="100" height="80" />
+        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Gateway_1o45d1m_di" bpmnElement="Gateway_1o45d1m" isMarkerVisible="true">
         <dc:Bounds x="1982" y="598" width="50" height="50" />
@@ -399,10 +402,6 @@
         <bpmndi:BPMNLabel>
           <dc:Bounds x="234" y="429" width="79" height="27" />
         </bpmndi:BPMNLabel>
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Activity_10d10g3_di" bpmnElement="Activity_10d10g3">
-        <dc:Bounds x="2857" y="353" width="100" height="80" />
-        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_03zbo1t_di" bpmnElement="Activity_15blyu4">
         <dc:Bounds x="1017" y="825" width="100" height="80" />
@@ -530,6 +529,10 @@
         <dc:Bounds x="2077" y="125" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0vm3z48_di" bpmnElement="Activity_10d10g3">
+        <dc:Bounds x="2857" y="353" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_0vm3i26_di" bpmnElement="Flow_0vm3i26">
         <di:waypoint x="2177" y="623" />
         <di:waypoint x="2207" y="623" />
@@ -544,7 +547,7 @@
         <di:waypoint x="2007" y="725" />
         <di:waypoint x="2007" y="648" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="2191" y="707" width="13" height="27" />
+          <dc:Bounds x="2190" y="707" width="15" height="27" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_11393jn_di" bpmnElement="Flow_11393jn">
@@ -580,7 +583,7 @@
         <di:waypoint x="1737" y="623" />
         <di:waypoint x="1977" y="623" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="3080" y="451" width="13" height="14" />
+          <dc:Bounds x="3079" y="451" width="15" height="14" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_1rpzex2_di" bpmnElement="Flow_1rpzex2">

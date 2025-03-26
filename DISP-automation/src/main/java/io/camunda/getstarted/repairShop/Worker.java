@@ -349,6 +349,41 @@ public class Worker {
     }
 
     /**
+     * Worker to process the customer approval form and set CustomerSatisfied variable
+     */
+    @ZeebeWorker(type = "process-satisfaction")
+    public void processApprovalForm(final JobClient client, final ActivatedJob job) {
+        Map<String, Object> variables = job.getVariablesAsMap();
+
+        try {
+            // Default to satisfied (true) if not specified
+            boolean satisfied = true;
+
+            logger.info("Setting CustomerSatisfied to: {}", satisfied);
+
+            // Set the CustomerSatisfied variable with capital C and S as requested
+            HashMap<String, Object> resultVariables = new HashMap<>();
+            resultVariables.put("CustomerSatisfied", satisfied);
+
+            // Complete the task
+            client.newCompleteCommand(job.getKey())
+                  .variables(resultVariables)
+                  .send()
+                  .exceptionally((throwable -> {
+                      logger.error("Error processing approval form", throwable);
+                      throw new RuntimeException("Failed to process approval form", throwable);
+                  }));
+
+        } catch (Exception e) {
+            logger.error("Error in approval form processing", e);
+            client.newFailCommand(job.getKey())
+                  .retries(job.getRetries() - 1)
+                  .errorMessage("Error processing approval form: " + e.getMessage())
+                  .send();
+        }
+    }
+
+    /**
      * Worker to send collection time notification (legacy implementation)
      */
     @ZeebeWorker(type = "ArrangeCollection")
