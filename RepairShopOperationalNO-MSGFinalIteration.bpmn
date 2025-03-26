@@ -31,11 +31,11 @@
         <bpmn:flowNodeRef>Event_1yf1xlh</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_0fblu15</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Event_07adudc</bpmn:flowNodeRef>
-        <bpmn:flowNodeRef>Activity_18lz7cj</bpmn:flowNodeRef>
-        <bpmn:flowNodeRef>Activity_1mod3n1</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_1g5ymwb</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_1vetocd</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_0gemlqi</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_18lz7cj</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_1mod3n1</bpmn:flowNodeRef>
       </bpmn:lane>
       <bpmn:lane id="Lane_0fwzxhw" name="Mechanics">
         <bpmn:flowNodeRef>Activity_1lhf4vx</bpmn:flowNodeRef>
@@ -183,7 +183,7 @@
     <bpmn:sequenceFlow id="Flow_1mff4nj" name="no&#10;" sourceRef="Gateway_092wnb4" targetRef="Gateway_1o45d1m">
       <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=TestsPassed = false</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
-    <bpmn:sendTask id="Activity_1tdj1nq" name="Notify customer of completion and available collection times">
+    <bpmn:sendTask id="Activity_1tdj1nq" name="Notify customer and offer available collection times">
       <bpmn:extensionElements>
         <zeebe:taskDefinition type="ArrangeCollection" />
       </bpmn:extensionElements>
@@ -245,14 +245,6 @@
     <bpmn:receiveTask id="Activity_15blyu4" name="Receive Towing Request" messageRef="Message_1t3qq3b">
       <bpmn:incoming>Flow_1imt80x</bpmn:incoming>
       <bpmn:outgoing>Flow_0s3c7ae</bpmn:outgoing>
-    </bpmn:receiveTask>
-    <bpmn:receiveTask id="Activity_1mod3n1" name="Recieve and confirm pickup time" messageRef="Message_2e2qdo7">
-      <bpmn:incoming>Flow_1ohnr7q</bpmn:incoming>
-      <bpmn:outgoing>Flow_1wrm2af</bpmn:outgoing>
-    </bpmn:receiveTask>
-    <bpmn:receiveTask id="Activity_18lz7cj" name="Recieve and confirm pickup time" messageRef="Message_2e2qdo7">
-      <bpmn:incoming>Flow_1eb3uoi</bpmn:incoming>
-      <bpmn:outgoing>Flow_0itomdy</bpmn:outgoing>
     </bpmn:receiveTask>
     <bpmn:task id="Activity_10d10g3" name="Recieve Approval form">
       <bpmn:incoming>Flow_03prc27</bpmn:incoming>
@@ -317,6 +309,20 @@
       <bpmn:incoming>Flow_00wlo82</bpmn:incoming>
       <bpmn:outgoing>Flow_1lpbzau</bpmn:outgoing>
     </bpmn:serviceTask>
+    <bpmn:serviceTask id="Activity_18lz7cj" name="Process booking and confirm pick-up">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="process-booking" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1eb3uoi</bpmn:incoming>
+      <bpmn:outgoing>Flow_0itomdy</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Activity_1mod3n1" name="Process booking and confirm pick-up">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="process-booking" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1ohnr7q</bpmn:incoming>
+      <bpmn:outgoing>Flow_1wrm2af</bpmn:outgoing>
+    </bpmn:serviceTask>
   </bpmn:process>
   <bpmn:message id="Message_0194njs" name="Message_0194njs">
     <bpmn:extensionElements>
@@ -325,7 +331,7 @@
   </bpmn:message>
   <bpmn:message id="Message_2e2qdo7" name="Message_2e2qdo7">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=Pickuptimes" />
+      <zeebe:subscription />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_2f796gc" name="Message_2f796gc">
@@ -400,12 +406,6 @@
       <bpmndi:BPMNShape id="Activity_10d10g3_di" bpmnElement="Activity_10d10g3">
         <dc:Bounds x="2850" y="358" width="100" height="80" />
         <bpmndi:BPMNLabel />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Activity_0zmqe99_di" bpmnElement="Activity_1mod3n1">
-        <dc:Bounds x="2070" y="130" width="100" height="80" />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="BPMNShape_09i7hrp" bpmnElement="Activity_18lz7cj">
-        <dc:Bounds x="2590" y="130" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_03zbo1t_di" bpmnElement="Activity_15blyu4">
         <dc:Bounds x="1010" y="830" width="100" height="80" />
@@ -524,6 +524,12 @@
       <bpmndi:BPMNShape id="Activity_0gkqmg3_di" bpmnElement="Activity_1ml0a7y">
         <dc:Bounds x="2440" y="358" width="100" height="80" />
         <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_03rpd62_di" bpmnElement="Activity_18lz7cj">
+        <dc:Bounds x="2590" y="130" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_08zoqs3_di" bpmnElement="Activity_1mod3n1">
+        <dc:Bounds x="2070" y="130" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_1mff4nj_di" bpmnElement="Flow_1mff4nj">
         <di:waypoint x="2380" y="653" />

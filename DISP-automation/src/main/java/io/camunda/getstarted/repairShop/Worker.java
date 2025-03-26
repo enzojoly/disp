@@ -3,9 +3,13 @@ package io.camunda.getstarted.repairShop;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import io.camunda.getstarted.repairShop.service.CalendlyService;
 import io.camunda.zeebe.client.api.response.ActivatedJob;
 import io.camunda.zeebe.client.api.worker.JobClient;
 import io.camunda.zeebe.spring.client.EnableZeebeClient;
@@ -14,6 +18,11 @@ import io.camunda.zeebe.spring.client.annotation.ZeebeWorker;
 @SpringBootApplication
 @EnableZeebeClient
 public class Worker {
+
+    private static final Logger logger = LoggerFactory.getLogger(Worker.class);
+
+    @Autowired
+    private CalendlyService calendlyService;
 
     public static void main(String[] args) {
         SpringApplication.run(Worker.class, args);
@@ -159,8 +168,8 @@ public class Worker {
         Map<String, Object> variables = job.getVariablesAsMap();
 
         try {
-            System.out.println("Processing repair completion notification for the receptionist");
-            System.out.println("Repair completion details being recorded for customer notification");
+            logger.info("Processing repair completion notification for the receptionist");
+            logger.info("Repair completion details being recorded for customer notification");
 
             // Create output variables
             HashMap<String, Object> resultVariables = new HashMap<>();
@@ -184,25 +193,191 @@ public class Worker {
     }
 
     /**
-     * Worker to send collection time notification
+     * Worker to notify customer to book an appointment after repair
+     */
+    @ZeebeWorker(type = "NotifyBookAppointment")
+    public void notifyBookAppointment(final JobClient client, final ActivatedJob job) {
+        Map<String, Object> variables = job.getVariablesAsMap();
+
+        try {
+            // Get customer information
+            String customerEmail = (String) variables.getOrDefault("customerEmail", "customer@example.com");
+            String customerName = (String) variables.getOrDefault("customerName", "Customer");
+            String vehicleMake = (String) variables.getOrDefault("VehicleMake", "Vehicle");
+            String vehicleModel = (String) variables.getOrDefault("VehicleModel", "Model");
+
+            // Create a booking link
+            String bookingLink = calendlyService.createBookingLink(
+                customerEmail,
+                customerName,
+                vehicleMake + " " + vehicleModel,
+                "Vehicle collection after repair"
+            );
+
+            logger.info("Sending repair completion notification to {} with booking link", customerEmail);
+            logger.info("Booking link: {}", bookingLink);
+
+            // In a real implementation, you would send an email here
+            // For demo, we just log it
+
+            // Output process variables
+            HashMap<String, Object> resultVariables = new HashMap<>();
+            resultVariables.put("bookingLink", bookingLink);
+            resultVariables.put("notificationSent", true);
+            resultVariables.put("notificationTimestamp", System.currentTimeMillis());
+
+            // Complete the task
+            client.newCompleteCommand(job.getKey())
+                  .variables(resultVariables)
+                  .send()
+                  .exceptionally((throwable -> {
+                      logger.error("Error completing NotifyBookAppointment", throwable);
+                      throw new RuntimeException("Failed to notify customer", throwable);
+                  }));
+
+        } catch (Exception e) {
+            logger.error("Error in NotifyBookAppointment worker", e);
+            client.newFailCommand(job.getKey())
+                  .retries(job.getRetries() - 1)
+                  .errorMessage("Error notifying customer: " + e.getMessage())
+                  .send();
+        }
+    }
+
+    /**
+     * Worker to offer collection times when quote is declined
+     */
+    @ZeebeWorker(type = "OfferCollectionTimes")
+    public void offerCollectionTimes(final JobClient client, final ActivatedJob job) {
+        Map<String, Object> variables = job.getVariablesAsMap();
+
+        try {
+            // Get customer information
+            String customerEmail = (String) variables.getOrDefault("customerEmail", "customer@example.com");
+            String customerName = (String) variables.getOrDefault("customerName", "Customer");
+            String vehicleMake = (String) variables.getOrDefault("VehicleMake", "Vehicle");
+            String vehicleModel = (String) variables.getOrDefault("VehicleModel", "Model");
+
+            // Create a booking link for vehicle pickup (no repair)
+            String bookingLink = calendlyService.createBookingLink(
+                customerEmail,
+                customerName,
+                vehicleMake + " " + vehicleModel,
+                "Vehicle collection without repair"
+            );
+
+            logger.info("Offering collection times to {} via Calendly", customerEmail);
+            logger.info("Booking link: {}", bookingLink);
+
+            // In a real implementation, you would send an email here
+
+            // Output process variables
+            HashMap<String, Object> resultVariables = new HashMap<>();
+            resultVariables.put("bookingLink", bookingLink);
+            resultVariables.put("collectionTimesOffered", true);
+
+            // Complete the task
+            client.newCompleteCommand(job.getKey())
+                  .variables(resultVariables)
+                  .send()
+                  .exceptionally((throwable -> {
+                      logger.error("Error completing OfferCollectionTimes", throwable);
+                      throw new RuntimeException("Failed to offer collection times", throwable);
+                  }));
+
+        } catch (Exception e) {
+            logger.error("Error in OfferCollectionTimes worker", e);
+            client.newFailCommand(job.getKey())
+                  .retries(job.getRetries() - 1)
+                  .errorMessage("Error offering collection times: " + e.getMessage())
+                  .send();
+        }
+    }
+
+    /**
+     * Worker to process booking confirmation
+     */
+    @ZeebeWorker(type = "process-booking")
+    public void processBooking(final JobClient client, final ActivatedJob job) {
+        Map<String, Object> variables = job.getVariablesAsMap();
+
+        try {
+            // Get customer information
+            String customerEmail = (String) variables.getOrDefault("customerEmail", "customer@example.com");
+            String customerName = (String) variables.getOrDefault("customerName", "Customer");
+
+            // Check if we already have booking information (from a webhook)
+            boolean hasBookingInfo = variables.containsKey("bookingConfirmed") &&
+                                   (Boolean)variables.get("bookingConfirmed");
+
+            Map<String, Object> bookingInfo;
+            if (hasBookingInfo) {
+                // Use the existing booking info from webhook
+                logger.info("Using existing booking info from webhook");
+                bookingInfo = new HashMap<>();
+                bookingInfo.put("appointmentTime", variables.get("appointmentTime"));
+                bookingInfo.put("bookingConfirmed", variables.get("bookingConfirmed"));
+                bookingInfo.put("bookingReference", variables.get("bookingReference"));
+            } else {
+                // For demo purposes, simulate a booking if webhook hasn't been received
+                logger.info("No webhook data found, simulating booking confirmation");
+                bookingInfo = calendlyService.simulateBooking(customerEmail, customerName);
+            }
+
+            logger.info("Processing booking for {} at {}",
+                    customerName, bookingInfo.get("appointmentTime"));
+
+            // In a real implementation, you might update an internal system
+            // or send further notifications
+
+            // Complete the task with booking info
+            client.newCompleteCommand(job.getKey())
+                  .variables(bookingInfo)
+                  .send()
+                  .exceptionally((throwable -> {
+                      logger.error("Error completing ProcessBooking", throwable);
+                      throw new RuntimeException("Failed to process booking", throwable);
+                  }));
+
+        } catch (Exception e) {
+            logger.error("Error in ProcessBooking worker", e);
+            client.newFailCommand(job.getKey())
+                  .retries(job.getRetries() - 1)
+                  .errorMessage("Error processing booking: " + e.getMessage())
+                  .send();
+        }
+    }
+
+    /**
+     * Worker to send collection time notification (legacy implementation)
      */
     @ZeebeWorker(type = "ArrangeCollection")
     public void arrangeCollection(final JobClient client, final ActivatedJob job) {
         try {
             Map<String, Object> variables = job.getVariablesAsMap();
 
-            // In a real implementation, this would send an actual notification
-            // For now, we just log the action
-            System.out.println("Sending collection time notification to customer");
-            System.out.println("Vehicle repairs completed, available for collection");
+            // Extract customer info
+            String customerEmail = (String) variables.getOrDefault("customerEmail", "customer@example.com");
+            String customerName = (String) variables.getOrDefault("customerName", "Customer");
+            String vehicleMake = (String) variables.getOrDefault("VehicleMake", "Vehicle");
+            String vehicleModel = (String) variables.getOrDefault("VehicleModel", "Model");
 
-            // Set some collection times (in a real scenario, these would be calculated)
-            String[] availableTimes = {"Tomorrow 9am-12pm", "Tomorrow 1pm-5pm", "Day after 9am-5pm"};
+            // Generate a Calendly booking link
+            String bookingLink = calendlyService.createBookingLink(
+                    customerEmail,
+                    customerName,
+                    vehicleMake + " " + vehicleModel,
+                    "Vehicle collection");
 
+            logger.info("Created Calendly booking link: {}", bookingLink);
+            logger.info("In production, an email would be sent to: {}", customerEmail);
+
+            // Set process variables
             HashMap<String, Object> resultVariables = new HashMap<>();
-            resultVariables.put("collectionTimesOffered", availableTimes);
+            resultVariables.put("bookingLink", bookingLink);
             resultVariables.put("notificationSent", true);
 
+            // Complete the job
             client.newCompleteCommand(job.getKey())
                   .variables(resultVariables)
                   .send()
