@@ -36,60 +36,49 @@ public class Worker {
         Map<String, Object> variables = job.getVariablesAsMap();
 
         try {
-            // Identify and log all variables for debugging
+            // Log all received variables to help with debugging
             logger.info("Received variables: {}", variables.keySet());
 
-            // Extract vehicle information
-            String vehicleMake = (String) variables.getOrDefault("VehicleMake", "Unknown make");
-            String vehicleModel = (String) variables.getOrDefault("VehicleModel", "Unknown model");
+            // Extract vehicle information - handle all possible field names
+            String vehicleMake = getStringValue(variables, "VehicleMake", "vehicleMake", "Make");
+            String vehicleModel = getStringValue(variables, "VehicleModel", "vehicleModel", "Model");
 
-            // Get fault description - try alternative variable names
-            String faultDescription = null;
-            if (variables.containsKey("DescriptionOfFault")) {
-                faultDescription = (String) variables.get("DescriptionOfFault");
-            } else if (variables.containsKey("faultDescription")) {
-                faultDescription = (String) variables.get("faultDescription");
-            } else {
-                faultDescription = "No description provided";
-            }
+            // Get fault description - try all possible variable names
+            String faultDescription = getStringValue(variables,
+                    "DescriptionOfFault", "extraDetails", "faultDescription", "description");
 
-            // Try to find breakdown location - multiple possible variable names
-            String breakdownLocation = null;
-            if (variables.containsKey("breakdownLocation")) {
-                breakdownLocation = (String) variables.get("breakdownLocation");
-            } else if (variables.containsKey("vehicleLocation")) {
-                breakdownLocation = (String) variables.get("vehicleLocation");
-            } else if (variables.containsKey("location")) {
-                breakdownLocation = (String) variables.get("location");
-            } else {
-                breakdownLocation = "Unknown location";
-            }
+            // Get breakdown location - try all possible variable names
+            String breakdownLocation = getStringValue(variables,
+                    "breakdownLocation", "VehicleLocation", "location");
 
-            // Try to find additional towing information
-            String towInfoAdditional = null;
-            if (variables.containsKey("towInfoAdditional")) {
-                towInfoAdditional = (String) variables.get("towInfoAdditional");
-            } else if (variables.containsKey("additionalInfo")) {
-                towInfoAdditional = (String) variables.get("additionalInfo");
-            } else if (variables.containsKey("towInfo")) {
-                towInfoAdditional = (String) variables.get("towInfo");
-            } else {
-                towInfoAdditional = "";
-            }
+            // Get additional towing information - try all possible variable names
+            String towInfoAdditional = getStringValue(variables,
+                    "towInfoAdditional", "extraInfo", "additionalInfo", "towInfo");
 
-            // Get membership status - default to false unless specifically set to true in the form
-            boolean isMember = Boolean.TRUE.equals(variables.get("isMember"));
+            // Get membership status - try all possible variable names
+            // Check multiple fields for membership status
+            boolean isMember = Boolean.TRUE.equals(variables.get("isMember")) ||
+                              Boolean.TRUE.equals(variables.get("SignedUp"));
+            boolean becomeMember = Boolean.TRUE.equals(variables.get("becomeMember")) ||
+                                  Boolean.TRUE.equals(variables.get("SigningUp"));
+
+            boolean membershipStatus = isMember || becomeMember;
 
             logger.info("Processing tow request for {} {}", vehicleMake, vehicleModel);
             logger.info("Vehicle location: {}", breakdownLocation);
             logger.info("Fault description: {}", faultDescription);
             logger.info("Additional info: {}", towInfoAdditional);
+            logger.info("Membership status - existing: {}, new: {}, final: {}",
+                    isMember, becomeMember, membershipStatus);
 
             // Prepare combined vehicle details for the tow team
-            String vehicleDetails = vehicleMake + " " + vehicleModel + " - " + faultDescription;
+            String vehicleDetails = vehicleMake + " " + vehicleModel;
+            if (faultDescription != null && !faultDescription.isEmpty()) {
+                vehicleDetails += " - " + faultDescription;
+            }
 
             // Calculate priority based on membership
-            String priority = isMember ? "High" : "Standard";
+            String priority = membershipStatus ? "High" : "Standard";
 
             // Prepare output variables - pass all the important data forward
             HashMap<String, Object> resultVariables = new HashMap<>();
@@ -103,7 +92,24 @@ public class Worker {
             resultVariables.put("towingPriority", priority);
             resultVariables.put("estimatedTowArrival", "Within 60 minutes");
             resultVariables.put("towRequestTimestamp", System.currentTimeMillis());
-            resultVariables.put("isMember", isMember); // Pass membership status along
+            resultVariables.put("isMember", membershipStatus); // Pass final membership status
+
+            // Also store original field names for backward compatibility
+            if (variables.containsKey("VehicleLocation")) {
+                resultVariables.put("VehicleLocation", breakdownLocation);
+            }
+            if (variables.containsKey("extraInfo")) {
+                resultVariables.put("extraInfo", towInfoAdditional);
+            }
+            if (variables.containsKey("extraDetails")) {
+                resultVariables.put("extraDetails", faultDescription);
+            }
+            if (variables.containsKey("SignedUp")) {
+                resultVariables.put("SignedUp", isMember);
+            }
+            if (variables.containsKey("SigningUp")) {
+                resultVariables.put("SigningUp", becomeMember);
+            }
 
             logger.info("Tow request processed with priority: {}", priority);
             logger.info("Vehicle details: {}", vehicleDetails);
@@ -135,41 +141,70 @@ public class Worker {
         Map<String, Object> variables = job.getVariablesAsMap();
 
         try {
-            // Get membership status explicitly - don't set a default
-            // Check both isMember (existing membership) and becomeMember (signing up today)
-            boolean isMember = Boolean.TRUE.equals(variables.get("isMember"));
-            boolean becomeMember = Boolean.TRUE.equals(variables.get("becomeMember"));
+            // Log all variables for debugging
+            logger.info("InitialCostCheck received variables: {}", variables.keySet());
+
+            // Get membership status from multiple possible variables
+            boolean existingMember = Boolean.TRUE.equals(variables.get("isMember")) ||
+                                   Boolean.TRUE.equals(variables.get("SignedUp"));
+            boolean newMember = Boolean.TRUE.equals(variables.get("becomeMember")) ||
+                              Boolean.TRUE.equals(variables.get("SigningUp"));
 
             // Set membership status based on either existing or new membership
-            boolean membershipStatus = isMember || becomeMember;
+            boolean membershipStatus = existingMember || newMember;
 
             // Simple flat deposit amount
             double deposit = 150.0;
 
+            // Apply discount for members if applicable
+            // (In this demo, we keep it flat, but you could modify this for members)
+
             System.out.println("Calculated deposit: " + deposit);
             System.out.println("Customer is member: " + membershipStatus);
+            System.out.println("Existing member: " + existingMember + ", New member: " + newMember);
 
             // Create output variables
             HashMap<String, Object> resultVariables = new HashMap<>();
             resultVariables.put("depositAmount", deposit);
             resultVariables.put("isMember", membershipStatus); // Pass along final membership status
 
-            // Preserve original form variables to ensure they're available later
-            if (variables.containsKey("VehicleMake")) {
-                resultVariables.put("VehicleMake", variables.get("VehicleMake"));
+            // Keep original membership fields for backward compatibility
+            if (variables.containsKey("SignedUp")) {
+                resultVariables.put("SignedUp", existingMember);
             }
-            if (variables.containsKey("VehicleModel")) {
-                resultVariables.put("VehicleModel", variables.get("VehicleModel"));
+            if (variables.containsKey("SigningUp")) {
+                resultVariables.put("SigningUp", newMember);
             }
-            if (variables.containsKey("DescriptionOfFault")) {
-                resultVariables.put("DescriptionOfFault", variables.get("DescriptionOfFault"));
+
+            // Preserve vehicle information - try all possible field names
+            String vehicleMake = getStringValue(variables, "VehicleMake", "vehicleMake", "Make");
+            String vehicleModel = getStringValue(variables, "VehicleModel", "vehicleModel", "Model");
+            String faultDescription = getStringValue(variables,
+                    "DescriptionOfFault", "extraDetails", "faultDescription", "description");
+            String breakdownLocation = getStringValue(variables,
+                    "breakdownLocation", "VehicleLocation", "location");
+            String towInfoAdditional = getStringValue(variables,
+                    "towInfoAdditional", "extraInfo", "additionalInfo", "towInfo");
+
+            // Store variables with consistent names
+            resultVariables.put("VehicleMake", vehicleMake);
+            resultVariables.put("VehicleModel", vehicleModel);
+            resultVariables.put("DescriptionOfFault", faultDescription);
+            resultVariables.put("breakdownLocation", breakdownLocation);
+            resultVariables.put("towInfoAdditional", towInfoAdditional);
+
+            // Also preserve with original field names
+            if (variables.containsKey("extraDetails")) {
+                resultVariables.put("extraDetails", faultDescription);
             }
-            if (variables.containsKey("breakdownLocation")) {
-                resultVariables.put("breakdownLocation", variables.get("breakdownLocation"));
+            if (variables.containsKey("VehicleLocation")) {
+                resultVariables.put("VehicleLocation", breakdownLocation);
             }
-            if (variables.containsKey("towInfoAdditional")) {
-                resultVariables.put("towInfoAdditional", variables.get("towInfoAdditional"));
+            if (variables.containsKey("extraInfo")) {
+                resultVariables.put("extraInfo", towInfoAdditional);
             }
+
+            // Preserve breakdown status
             if (variables.containsKey("Breakdown")) {
                 resultVariables.put("Breakdown", variables.get("Breakdown"));
             }
@@ -199,39 +234,54 @@ public class Worker {
         Map<String, Object> variables = job.getVariablesAsMap();
 
         try {
+            // Log variables for debugging
+            logger.info("CalculateFinalPrice received variables: {}", variables.keySet());
+
             // Set default repair cost for demo if not provided
             if (!variables.containsKey("repairCost")) {
                 variables.put("repairCost", 500.0); // Default repair cost
             }
 
-            // Get repair cost and membership status
-            double repairCost = ((Number) variables.get("repairCost")).doubleValue();
-            boolean isMember = Boolean.TRUE.equals(variables.get("isMember"));
+            // Get repair cost and membership status - check all possible field names
+            double repairCost = ((Number) variables.getOrDefault("repairCost", 500.0)).doubleValue();
+
+            // Check multiple fields for membership status
+            boolean membershipStatus = Boolean.TRUE.equals(variables.get("isMember")) ||
+                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                                     Boolean.TRUE.equals(variables.get("SigningUp"));
 
             // Apply 10% discount for members
-            double discountPercentage = isMember ? 10.0 : 0.0;
+            double discountPercentage = membershipStatus ? 10.0 : 0.0;
             double finalPrice = repairCost * (1 - (discountPercentage / 100.0));
 
             System.out.println("Original cost: " + repairCost);
-            System.out.println("Is member: " + isMember);
+            System.out.println("Is member: " + membershipStatus);
             System.out.println("Discount: " + discountPercentage + "%");
             System.out.println("Final price: " + finalPrice);
 
             // Output variables
             HashMap<String, Object> resultVariables = new HashMap<>();
             resultVariables.put("finalPrice", finalPrice);
-            resultVariables.put("discountApplied", isMember);
+            resultVariables.put("discountApplied", membershipStatus);
             resultVariables.put("discountPercentage", discountPercentage);
+            resultVariables.put("isMember", membershipStatus); // Keep consistent membership status
 
-            // Preserve vehicle information
-            if (variables.containsKey("VehicleMake")) {
-                resultVariables.put("VehicleMake", variables.get("VehicleMake"));
+            // Preserve vehicle information - use helper method to try multiple field names
+            String vehicleMake = getStringValue(variables, "VehicleMake", "vehicleMake", "Make");
+            String vehicleModel = getStringValue(variables, "VehicleModel", "vehicleModel", "Model");
+            String faultDescription = getStringValue(variables,
+                    "DescriptionOfFault", "extraDetails", "faultDescription");
+
+            resultVariables.put("VehicleMake", vehicleMake);
+            resultVariables.put("VehicleModel", vehicleModel);
+            resultVariables.put("DescriptionOfFault", faultDescription);
+
+            // Preserve customer information if available
+            if (variables.containsKey("customerName")) {
+                resultVariables.put("customerName", variables.get("customerName"));
             }
-            if (variables.containsKey("VehicleModel")) {
-                resultVariables.put("VehicleModel", variables.get("VehicleModel"));
-            }
-            if (variables.containsKey("DescriptionOfFault")) {
-                resultVariables.put("DescriptionOfFault", variables.get("DescriptionOfFault"));
+            if (variables.containsKey("customerEmail")) {
+                resultVariables.put("customerEmail", variables.get("customerEmail"));
             }
 
             // Complete the job
@@ -259,27 +309,62 @@ public class Worker {
         Map<String, Object> variables = job.getVariablesAsMap();
 
         try {
-            // Get approval value from the form data
-            Boolean approved = Boolean.TRUE.equals(variables.get("Approved"));
+            // Log variables for debugging
+            logger.info("process-approval received variables: {}", variables.keySet());
 
-            System.out.println("Processing customer approval: " + (approved ? "Approved" : "Denied"));
+            // Get approval value from the form data - try multiple possible field names
+            Boolean approved = null;
+            if (variables.containsKey("Approved")) {
+                approved = Boolean.TRUE.equals(variables.get("Approved"));
+            } else if (variables.containsKey("approved")) {
+                approved = Boolean.TRUE.equals(variables.get("approved"));
+            } else if (variables.containsKey("approval")) {
+                approved = Boolean.TRUE.equals(variables.get("approval"));
+            } else {
+                approved = false; // Default to false if not found
+            }
+
+            logger.info("Processing customer approval: {}", approved ? "Approved" : "Denied");
 
             // Set the process variable for the gateway condition
             HashMap<String, Object> resultVariables = new HashMap<>();
             resultVariables.put("QuoteApproved", approved);
 
-            // Preserve important vehicle information
-            if (variables.containsKey("VehicleMake")) {
-                resultVariables.put("VehicleMake", variables.get("VehicleMake"));
+            // Also store in original field name if it exists
+            if (variables.containsKey("Approved")) {
+                resultVariables.put("Approved", approved);
             }
-            if (variables.containsKey("VehicleModel")) {
-                resultVariables.put("VehicleModel", variables.get("VehicleModel"));
+
+            // Preserve important vehicle information - use helper for multiple field names
+            String vehicleMake = getStringValue(variables, "VehicleMake", "vehicleMake", "Make");
+            String vehicleModel = getStringValue(variables, "VehicleModel", "vehicleModel", "Model");
+            String faultDescription = getStringValue(variables,
+                    "DescriptionOfFault", "extraDetails", "faultDescription");
+
+            resultVariables.put("VehicleMake", vehicleMake);
+            resultVariables.put("VehicleModel", vehicleModel);
+            resultVariables.put("DescriptionOfFault", faultDescription);
+
+            // Preserve membership status across all possible field names
+            boolean membershipStatus = Boolean.TRUE.equals(variables.get("isMember")) ||
+                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                                     Boolean.TRUE.equals(variables.get("SigningUp"));
+
+            resultVariables.put("isMember", membershipStatus);
+
+            if (variables.containsKey("SignedUp")) {
+                resultVariables.put("SignedUp", membershipStatus);
             }
-            if (variables.containsKey("DescriptionOfFault")) {
-                resultVariables.put("DescriptionOfFault", variables.get("DescriptionOfFault"));
+            if (variables.containsKey("SigningUp")) {
+                resultVariables.put("SigningUp", membershipStatus);
             }
-            if (variables.containsKey("isMember")) {
-                resultVariables.put("isMember", variables.get("isMember"));
+
+            // Preserve customer information if available
+            if (variables.containsKey("customerName")) {
+                resultVariables.put("customerName", variables.get("customerName"));
+            }
+            if (variables.containsKey("customerEmail")) {
+                resultVariables.put("customerEmail", variables.get("customerEmail"));
             }
 
             client.newCompleteCommand(job.getKey())
@@ -313,22 +398,23 @@ public class Worker {
             resultVariables.put("repairCompletionProcessed", true);
             resultVariables.put("repairCompletionTimestamp", System.currentTimeMillis());
 
-            // Preserve vehicle and customer information
-            if (variables.containsKey("VehicleMake")) {
-                resultVariables.put("VehicleMake", variables.get("VehicleMake"));
-            }
-            if (variables.containsKey("VehicleModel")) {
-                resultVariables.put("VehicleModel", variables.get("VehicleModel"));
-            }
-            if (variables.containsKey("customerName")) {
-                resultVariables.put("customerName", variables.get("customerName"));
-            }
-            if (variables.containsKey("customerEmail")) {
-                resultVariables.put("customerEmail", variables.get("customerEmail"));
-            }
-            if (variables.containsKey("isMember")) {
-                resultVariables.put("isMember", variables.get("isMember"));
-            }
+            // Preserve vehicle and customer information using helper method
+            String vehicleMake = getStringValue(variables, "VehicleMake", "vehicleMake", "Make");
+            String vehicleModel = getStringValue(variables, "VehicleModel", "vehicleModel", "Model");
+            String customerName = getStringValue(variables, "customerName", "CustomerName", "name");
+            String customerEmail = getStringValue(variables, "customerEmail", "CustomerEmail", "email");
+
+            resultVariables.put("VehicleMake", vehicleMake);
+            resultVariables.put("VehicleModel", vehicleModel);
+            resultVariables.put("customerName", customerName);
+            resultVariables.put("customerEmail", customerEmail);
+
+            // Preserve membership status
+            boolean membershipStatus = Boolean.TRUE.equals(variables.get("isMember")) ||
+                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                                     Boolean.TRUE.equals(variables.get("SigningUp"));
+
+            resultVariables.put("isMember", membershipStatus);
 
             // Complete the job
             client.newCompleteCommand(job.getKey())
@@ -354,11 +440,15 @@ public class Worker {
         Map<String, Object> variables = job.getVariablesAsMap();
 
         try {
-            // Get customer information
-            String customerEmail = (String) variables.getOrDefault("customerEmail", "customer@example.com");
-            String customerName = (String) variables.getOrDefault("customerName", "Customer");
-            String vehicleMake = (String) variables.getOrDefault("VehicleMake", "Vehicle");
-            String vehicleModel = (String) variables.getOrDefault("VehicleModel", "Model");
+            // Get customer information using helper method
+            String customerEmail = getStringValue(variables,
+                    "customerEmail", "CustomerEmail", "email", "customer@example.com");
+            String customerName = getStringValue(variables,
+                    "customerName", "CustomerName", "name", "Customer");
+            String vehicleMake = getStringValue(variables,
+                    "VehicleMake", "vehicleMake", "Make", "Vehicle");
+            String vehicleModel = getStringValue(variables,
+                    "VehicleModel", "vehicleModel", "Model", "Model");
 
             // Create a booking link
             String bookingLink = calendlyService.createBookingLink(
@@ -370,6 +460,7 @@ public class Worker {
 
             logger.info("Sending repair completion notification to {} with booking link", customerEmail);
             logger.info("Booking link: {}", bookingLink);
+            logger.info("Vehicle details: {} {}", vehicleMake, vehicleModel);
 
             // In a real implementation, you would send an email here
             // For demo, we just log it
@@ -381,17 +472,14 @@ public class Worker {
             resultVariables.put("notificationTimestamp", System.currentTimeMillis());
 
             // Preserve key information
-            if (variables.containsKey("VehicleMake")) {
-                resultVariables.put("VehicleMake", variables.get("VehicleMake"));
-            }
-            if (variables.containsKey("VehicleModel")) {
-                resultVariables.put("VehicleModel", variables.get("VehicleModel"));
-            }
-            if (variables.containsKey("customerName")) {
-                resultVariables.put("customerName", variables.get("customerName"));
-            }
-            if (variables.containsKey("customerEmail")) {
-                resultVariables.put("customerEmail", variables.get("customerEmail"));
+            resultVariables.put("VehicleMake", vehicleMake);
+            resultVariables.put("VehicleModel", vehicleModel);
+            resultVariables.put("customerName", customerName);
+            resultVariables.put("customerEmail", customerEmail);
+
+            // Preserve membership status
+            if (variables.containsKey("isMember")) {
+                resultVariables.put("isMember", variables.get("isMember"));
             }
 
             // Complete the task
@@ -420,11 +508,15 @@ public class Worker {
         Map<String, Object> variables = job.getVariablesAsMap();
 
         try {
-            // Get customer information
-            String customerEmail = (String) variables.getOrDefault("customerEmail", "customer@example.com");
-            String customerName = (String) variables.getOrDefault("customerName", "Customer");
-            String vehicleMake = (String) variables.getOrDefault("VehicleMake", "Vehicle");
-            String vehicleModel = (String) variables.getOrDefault("VehicleModel", "Model");
+            // Get customer information using helper method
+            String customerEmail = getStringValue(variables,
+                    "customerEmail", "CustomerEmail", "email", "customer@example.com");
+            String customerName = getStringValue(variables,
+                    "customerName", "CustomerName", "name", "Customer");
+            String vehicleMake = getStringValue(variables,
+                    "VehicleMake", "vehicleMake", "Make", "Vehicle");
+            String vehicleModel = getStringValue(variables,
+                    "VehicleModel", "vehicleModel", "Model", "Model");
 
             // Create a booking link for vehicle pickup (no repair)
             String bookingLink = calendlyService.createBookingLink(
@@ -477,11 +569,15 @@ public class Worker {
         Map<String, Object> variables = job.getVariablesAsMap();
 
         try {
-            // Get customer information
-            String customerEmail = (String) variables.getOrDefault("customerEmail", "customer@example.com");
-            String customerName = (String) variables.getOrDefault("customerName", "Customer");
-            String vehicleMake = (String) variables.getOrDefault("VehicleMake", "Vehicle");
-            String vehicleModel = (String) variables.getOrDefault("VehicleModel", "Model");
+            // Get customer information using helper method
+            String customerEmail = getStringValue(variables,
+                    "customerEmail", "CustomerEmail", "email", "customer@example.com");
+            String customerName = getStringValue(variables,
+                    "customerName", "CustomerName", "name", "Customer");
+            String vehicleMake = getStringValue(variables,
+                    "VehicleMake", "vehicleMake", "Make", "Vehicle");
+            String vehicleModel = getStringValue(variables,
+                    "VehicleModel", "vehicleModel", "Model", "Model");
 
             // Check if we already have booking information (from a webhook)
             boolean hasBookingInfo = variables.containsKey("bookingConfirmed") &&
@@ -510,9 +606,12 @@ public class Worker {
             bookingInfo.put("customerName", customerName);
             bookingInfo.put("customerEmail", customerEmail);
 
-            if (variables.containsKey("isMember")) {
-                bookingInfo.put("isMember", variables.get("isMember"));
-            }
+            // Preserve membership status
+            boolean membershipStatus = Boolean.TRUE.equals(variables.get("isMember")) ||
+                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                                     Boolean.TRUE.equals(variables.get("SigningUp"));
+
+            bookingInfo.put("isMember", membershipStatus);
 
             // Complete the task with booking info
             client.newCompleteCommand(job.getKey())
@@ -543,25 +642,38 @@ public class Worker {
             // Default to satisfied (true) if not specified
             boolean satisfied = true;
 
+            // Try to get the value from the form if it exists
+            if (variables.containsKey("Satisfied")) {
+                satisfied = Boolean.TRUE.equals(variables.get("Satisfied"));
+            } else if (variables.containsKey("satisfied")) {
+                satisfied = Boolean.TRUE.equals(variables.get("satisfied"));
+            } else if (variables.containsKey("customerSatisfied")) {
+                satisfied = Boolean.TRUE.equals(variables.get("customerSatisfied"));
+            }
+
             logger.info("Setting CustomerSatisfied to: {}", satisfied);
 
             // Set the CustomerSatisfied variable with capital C and S as requested
             HashMap<String, Object> resultVariables = new HashMap<>();
             resultVariables.put("CustomerSatisfied", satisfied);
 
+            // Also set with alternate capitalization for safety
+            resultVariables.put("customerSatisfied", satisfied);
+
             // Preserve vehicle and customer information
-            if (variables.containsKey("VehicleMake")) {
-                resultVariables.put("VehicleMake", variables.get("VehicleMake"));
-            }
-            if (variables.containsKey("VehicleModel")) {
-                resultVariables.put("VehicleModel", variables.get("VehicleModel"));
-            }
-            if (variables.containsKey("customerName")) {
-                resultVariables.put("customerName", variables.get("customerName"));
-            }
-            if (variables.containsKey("customerEmail")) {
-                resultVariables.put("customerEmail", variables.get("customerEmail"));
-            }
+            String vehicleMake = getStringValue(variables,
+                    "VehicleMake", "vehicleMake", "Make", "Vehicle");
+            String vehicleModel = getStringValue(variables,
+                    "VehicleModel", "vehicleModel", "Model", "Model");
+            String customerName = getStringValue(variables,
+                    "customerName", "CustomerName", "name", "Customer");
+            String customerEmail = getStringValue(variables,
+                    "customerEmail", "CustomerEmail", "email", "customer@example.com");
+
+            resultVariables.put("VehicleMake", vehicleMake);
+            resultVariables.put("VehicleModel", vehicleModel);
+            resultVariables.put("customerName", customerName);
+            resultVariables.put("customerEmail", customerEmail);
 
             // Complete the task
             client.newCompleteCommand(job.getKey())
@@ -589,11 +701,15 @@ public class Worker {
         try {
             Map<String, Object> variables = job.getVariablesAsMap();
 
-            // Extract customer info
-            String customerEmail = (String) variables.getOrDefault("customerEmail", "customer@example.com");
-            String customerName = (String) variables.getOrDefault("customerName", "Customer");
-            String vehicleMake = (String) variables.getOrDefault("VehicleMake", "Vehicle");
-            String vehicleModel = (String) variables.getOrDefault("VehicleModel", "Model");
+            // Extract customer info using helper method
+            String customerEmail = getStringValue(variables,
+                    "customerEmail", "CustomerEmail", "email", "customer@example.com");
+            String customerName = getStringValue(variables,
+                    "customerName", "CustomerName", "name", "Customer");
+            String vehicleMake = getStringValue(variables,
+                    "VehicleMake", "vehicleMake", "Make", "Vehicle");
+            String vehicleModel = getStringValue(variables,
+                    "VehicleModel", "vehicleModel", "Model", "Model");
 
             // Generate a Calendly booking link
             String bookingLink = calendlyService.createBookingLink(
@@ -614,6 +730,13 @@ public class Worker {
             resultVariables.put("VehicleModel", vehicleModel);
             resultVariables.put("customerName", customerName);
             resultVariables.put("customerEmail", customerEmail);
+
+            // Preserve membership status
+            boolean membershipStatus = Boolean.TRUE.equals(variables.get("isMember")) ||
+                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                                     Boolean.TRUE.equals(variables.get("SigningUp"));
+
+            resultVariables.put("isMember", membershipStatus);
 
             // Complete the job
             client.newCompleteCommand(job.getKey())
@@ -639,10 +762,16 @@ public class Worker {
         try {
             Map<String, Object> variables = job.getVariablesAsMap();
             double finalPrice = ((Number) variables.getOrDefault("finalPrice", 0.0)).doubleValue();
-            String vehicleMake = (String) variables.getOrDefault("VehicleMake", "Vehicle");
-            String vehicleModel = (String) variables.getOrDefault("VehicleModel", "Model");
-            String customerEmail = (String) variables.getOrDefault("customerEmail", "customer@example.com");
-            String customerName = (String) variables.getOrDefault("customerName", "Customer");
+
+            // Get vehicle and customer information using helper
+            String vehicleMake = getStringValue(variables,
+                    "VehicleMake", "vehicleMake", "Make", "Vehicle");
+            String vehicleModel = getStringValue(variables,
+                    "VehicleModel", "vehicleModel", "Model", "Model");
+            String customerEmail = getStringValue(variables,
+                    "customerEmail", "CustomerEmail", "email", "customer@example.com");
+            String customerName = getStringValue(variables,
+                    "customerName", "CustomerName", "name", "Customer");
 
             // In a real implementation, this would send an actual notification
             System.out.println("Sending final quote to customer: " + customerName);
@@ -658,6 +787,13 @@ public class Worker {
             resultVariables.put("customerName", customerName);
             resultVariables.put("customerEmail", customerEmail);
             resultVariables.put("finalPrice", finalPrice);
+
+            // Preserve membership status
+            boolean membershipStatus = Boolean.TRUE.equals(variables.get("isMember")) ||
+                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                                     Boolean.TRUE.equals(variables.get("SigningUp"));
+
+            resultVariables.put("isMember", membershipStatus);
 
             client.newCompleteCommand(job.getKey())
                   .variables(resultVariables)
@@ -681,8 +817,12 @@ public class Worker {
     public void notifyWorkComplete(final JobClient client, final ActivatedJob job) {
         try {
             Map<String, Object> variables = job.getVariablesAsMap();
-            String vehicleMake = (String) variables.getOrDefault("VehicleMake", "Vehicle");
-            String vehicleModel = (String) variables.getOrDefault("VehicleModel", "Model");
+
+            // Get vehicle information using helper
+            String vehicleMake = getStringValue(variables,
+                    "VehicleMake", "vehicleMake", "Make", "Vehicle");
+            String vehicleModel = getStringValue(variables,
+                    "VehicleModel", "vehicleModel", "Model", "Model");
 
             // In a real implementation, this would send an actual notification
             System.out.println("Notifying reception that vehicle repairs are complete");
@@ -695,12 +835,24 @@ public class Worker {
             resultVariables.put("VehicleModel", vehicleModel);
 
             // Preserve customer information
-            if (variables.containsKey("customerName")) {
-                resultVariables.put("customerName", variables.get("customerName"));
+            String customerName = getStringValue(variables,
+                    "customerName", "CustomerName", "name", null);
+            String customerEmail = getStringValue(variables,
+                    "customerEmail", "CustomerEmail", "email", null);
+
+            if (customerName != null) {
+                resultVariables.put("customerName", customerName);
             }
-            if (variables.containsKey("customerEmail")) {
-                resultVariables.put("customerEmail", variables.get("customerEmail"));
+            if (customerEmail != null) {
+                resultVariables.put("customerEmail", customerEmail);
             }
+
+            // Preserve membership status
+            boolean membershipStatus = Boolean.TRUE.equals(variables.get("isMember")) ||
+                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                                     Boolean.TRUE.equals(variables.get("SigningUp"));
+
+            resultVariables.put("isMember", membershipStatus);
 
             client.newCompleteCommand(job.getKey())
                   .variables(resultVariables)
@@ -724,20 +876,34 @@ public class Worker {
     public void sendTowRequest(final JobClient client, final ActivatedJob job) {
         try {
             Map<String, Object> variables = job.getVariablesAsMap();
-            String location = (String) variables.getOrDefault("breakdownLocation", "Unknown location");
-            String vehicleMake = (String) variables.getOrDefault("VehicleMake", "Unknown make");
-            String vehicleModel = (String) variables.getOrDefault("VehicleModel", "Unknown model");
-            String faultDescription = (String) variables.getOrDefault("DescriptionOfFault", "No description provided");
-            String towInfoAdditional = (String) variables.getOrDefault("towInfoAdditional", "");
+
+            // Log variables for debugging
+            logger.info("TowRequest received variables: {}", variables.keySet());
+
+            // Get vehicle and location information using helper
+            String location = getStringValue(variables,
+                    "breakdownLocation", "VehicleLocation", "location", "Unknown location");
+            String vehicleMake = getStringValue(variables,
+                    "VehicleMake", "vehicleMake", "Make", "Unknown make");
+            String vehicleModel = getStringValue(variables,
+                    "VehicleModel", "vehicleModel", "Model", "Unknown model");
+            String faultDescription = getStringValue(variables,
+                    "DescriptionOfFault", "extraDetails", "faultDescription", "No description provided");
+            String towInfoAdditional = getStringValue(variables,
+                    "towInfoAdditional", "extraInfo", "additionalInfo", "");
 
             // Combine vehicle information
-            String vehicleDetails = vehicleMake + " " + vehicleModel + " - " + faultDescription;
+            String vehicleDetails = vehicleMake + " " + vehicleModel;
+            if (faultDescription != null && !faultDescription.isEmpty() &&
+                !faultDescription.equals("No description provided")) {
+                vehicleDetails += " - " + faultDescription;
+            }
 
             // In a real implementation, this would send an actual tow request
             System.out.println("Sending tow request to towing service");
             System.out.println("Breakdown location: " + location);
             System.out.println("Vehicle details: " + vehicleDetails);
-            if (!towInfoAdditional.isEmpty()) {
+            if (towInfoAdditional != null && !towInfoAdditional.isEmpty()) {
                 System.out.println("Additional info: " + towInfoAdditional);
             }
 
@@ -753,15 +919,43 @@ public class Worker {
             resultVariables.put("DescriptionOfFault", faultDescription);
             resultVariables.put("towInfoAdditional", towInfoAdditional);
 
+            // Also preserve with original variable names
+            if (variables.containsKey("VehicleLocation")) {
+                resultVariables.put("VehicleLocation", location);
+            }
+            if (variables.containsKey("extraDetails")) {
+                resultVariables.put("extraDetails", faultDescription);
+            }
+            if (variables.containsKey("extraInfo")) {
+                resultVariables.put("extraInfo", towInfoAdditional);
+            }
+
             // Preserve customer information
-            if (variables.containsKey("customerName")) {
-                resultVariables.put("customerName", variables.get("customerName"));
+            String customerName = getStringValue(variables,
+                    "customerName", "CustomerName", "name", null);
+            String customerEmail = getStringValue(variables,
+                    "customerEmail", "CustomerEmail", "email", null);
+
+            if (customerName != null) {
+                resultVariables.put("customerName", customerName);
             }
-            if (variables.containsKey("customerEmail")) {
-                resultVariables.put("customerEmail", variables.get("customerEmail"));
+            if (customerEmail != null) {
+                resultVariables.put("customerEmail", customerEmail);
             }
-            if (variables.containsKey("isMember")) {
-                resultVariables.put("isMember", variables.get("isMember"));
+
+            // Preserve membership status
+            boolean membershipStatus = Boolean.TRUE.equals(variables.get("isMember")) ||
+                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                                     Boolean.TRUE.equals(variables.get("SigningUp"));
+
+            resultVariables.put("isMember", membershipStatus);
+
+            // Preserve original membership fields
+            if (variables.containsKey("SignedUp")) {
+                resultVariables.put("SignedUp", variables.get("SignedUp"));
+            }
+            if (variables.containsKey("SigningUp")) {
+                resultVariables.put("SigningUp", variables.get("SigningUp"));
             }
 
             client.newCompleteCommand(job.getKey())
@@ -777,5 +971,35 @@ public class Worker {
                   .errorMessage("Error sending tow request: " + e.getMessage())
                   .send();
         }
+    }
+
+    /**
+     * Helper method to get string value from multiple possible variable names
+     * @param variables The variable map
+     * @param keys Multiple possible keys to try
+     * @return The first non-null value found, or null if none found
+     */
+    private String getStringValue(Map<String, Object> variables, String... keys) {
+        if (keys.length == 0) return null;
+
+        // Try each key in order
+        for (String key : keys) {
+            if (variables.containsKey(key) && variables.get(key) != null) {
+                Object value = variables.get(key);
+                if (value instanceof String) {
+                    return (String) value;
+                }
+                // Convert non-string to string if needed
+                return String.valueOf(value);
+            }
+        }
+
+        // If we get here and there's a default value provided as the last key
+        if (keys.length > 0 && !keys[keys.length-1].contains(".")) {
+            // The last key might be a default value, not a key to search for
+            return keys[keys.length-1];
+        }
+
+        return null;
     }
 }
