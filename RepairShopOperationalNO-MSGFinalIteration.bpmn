@@ -19,11 +19,11 @@
         <bpmn:flowNodeRef>Activity_1dxjko5</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_10d10g3</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Event_01f2boo</bpmn:flowNodeRef>
-        <bpmn:flowNodeRef>Activity_06d1qyy</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_1ml0a7y</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_100dfbj</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_1gm3exs</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_1f1y01m</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_06d1qyy</bpmn:flowNodeRef>
       </bpmn:lane>
       <bpmn:lane id="Lane_0r5ctp2" name="Customer">
         <bpmn:flowNodeRef>Activity_010rkbr</bpmn:flowNodeRef>
@@ -254,10 +254,6 @@
     <bpmn:startEvent id="Event_01f2boo" name="Recieve contact from customer">
       <bpmn:outgoing>Flow_015cw5y</bpmn:outgoing>
     </bpmn:startEvent>
-    <bpmn:receiveTask id="Activity_06d1qyy" name="Recieve customer approval or denial" messageRef="Message_22sbikg">
-      <bpmn:incoming>Flow_0rd8ijc</bpmn:incoming>
-      <bpmn:outgoing>Flow_0s7ycb0</bpmn:outgoing>
-    </bpmn:receiveTask>
     <bpmn:task id="Activity_1vetocd" name="Recieve initial costs &#10;">
       <bpmn:incoming>Flow_07ay6cp</bpmn:incoming>
       <bpmn:outgoing>Flow_0hveqlx</bpmn:outgoing>
@@ -311,6 +307,13 @@
     <bpmn:sequenceFlow id="Flow_11393jn" name="yes&#10;" sourceRef="Gateway_092wnb4" targetRef="Activity_01fxwqp">
       <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=TestsPassed</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
+    <bpmn:serviceTask id="Activity_06d1qyy" name="Process customer approval or denial">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="process-approval" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0rd8ijc</bpmn:incoming>
+      <bpmn:outgoing>Flow_0s7ycb0</bpmn:outgoing>
+    </bpmn:serviceTask>
   </bpmn:process>
   <bpmn:message id="Message_0194njs" name="Message_0194njs">
     <bpmn:extensionElements>
@@ -388,10 +391,6 @@
         <bpmndi:BPMNLabel>
           <dc:Bounds x="1916" y="603" width="68" height="14" />
         </bpmndi:BPMNLabel>
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Activity_00f766b_di" bpmnElement="Activity_06d1qyy">
-        <dc:Bounds x="1830" y="368" width="100" height="80" />
-        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Event_056m8ss_di" bpmnElement="Event_01f2boo">
         <dc:Bounds x="247" y="390" width="36" height="36" />
@@ -518,6 +517,10 @@
         <bpmndi:BPMNLabel>
           <dc:Bounds x="1104" y="673" width="72" height="14" />
         </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0c4qgco_di" bpmnElement="Activity_06d1qyy">
+        <dc:Bounds x="1830" y="368" width="100" height="80" />
+        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_1mff4nj_di" bpmnElement="Flow_1mff4nj">
         <di:waypoint x="2380" y="653" />

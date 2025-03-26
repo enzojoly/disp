@@ -111,6 +111,50 @@ public class Worker {
     }
 
     /**
+     * Worker to process customer approval or denial
+     */
+    @ZeebeWorker(type = "process-approval")
+    public void processApproval(final JobClient client, final ActivatedJob job) {
+        Map<String, Object> variables = job.getVariablesAsMap();
+
+        try {
+            // Get approval value from the form data
+            // Check multiple possible variable names that might contain approval
+            Boolean approved = false;
+
+            if (variables.containsKey("approved")) {
+                approved = (Boolean) variables.get("approved");
+            } else if (variables.containsKey("approval")) {
+                approved = (Boolean) variables.get("approval");
+            } else if (variables.containsKey("quoteApproved")) {
+                approved = (Boolean) variables.get("quoteApproved");
+            } else {
+                // Default to false if no approval variable is found
+                System.out.println("No approval variable found, defaulting to false");
+            }
+
+            System.out.println("Processing customer approval: " + (approved ? "Approved" : "Denied"));
+
+            // Set the process variable for the gateway condition
+            HashMap<String, Object> resultVariables = new HashMap<>();
+            resultVariables.put("QuoteApproved", approved);
+
+            client.newCompleteCommand(job.getKey())
+                  .variables(resultVariables)
+                  .send()
+                  .exceptionally((throwable -> {
+                      throw new RuntimeException("Could not process approval", throwable);
+                  }));
+
+        } catch (Exception e) {
+            client.newFailCommand(job.getKey())
+                  .retries(job.getRetries() - 1)
+                  .errorMessage("Error processing approval: " + e.getMessage())
+                  .send();
+        }
+    }
+
+    /**
      * Worker to send collection time notification
      */
     @ZeebeWorker(type = "ArrangeCollection")
