@@ -16,7 +16,7 @@ public class CalendlyService {
     private static final Logger logger = LoggerFactory.getLogger(CalendlyService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Value("${calendly.booking.url:https://calendly.com/your-repair-shop/vehicle-collection}")
+    @Value("${calendly.booking.url:https://calendly.com/business-enzo}")
     private String bookingUrl;
 
     /**

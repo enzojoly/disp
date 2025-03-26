@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:modeler="http://camunda.org/schema/modeler/1.0" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Web Modeler" exporterVersion="41ec04e" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.6.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:modeler="http://camunda.org/schema/modeler/1.0" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Web Modeler" exporterVersion="fcfe216" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.6.0">
   <bpmn:collaboration id="Process_0v6w9mp" name="RepairShop operational">
     <bpmn:participant id="Participant_1444v15" name="Repair shop" processRef="Process_vf0sj9k" />
   </bpmn:collaboration>
   <bpmn:process id="Process_vf0sj9k" isExecutable="true">
     <bpmn:laneSet id="LaneSet_0kc0it7">
       <bpmn:lane id="Lane_0i8cicy" name="Towing Service">
-        <bpmn:flowNodeRef>Activity_15blyu4</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_1qo6pw7</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_15blyu4</bpmn:flowNodeRef>
       </bpmn:lane>
       <bpmn:lane id="Lane_0fwzxhw" name="Mechanics">
         <bpmn:flowNodeRef>Activity_18k98oy</bpmn:flowNodeRef>
@@ -53,117 +53,35 @@
         <bpmn:flowNodeRef>Activity_10d10g3</bpmn:flowNodeRef>
       </bpmn:lane>
     </bpmn:laneSet>
-    <bpmn:userTask id="Activity_18k98oy" name="Perform rigourous testing">
+    <bpmn:userTask id="Activity_010rkbr" name="Approve or deny the repair based on quote">
       <bpmn:extensionElements>
         <zeebe:userTask />
-        <zeebe:formDefinition formId="perform-rigourous-testing-1j8tjnu" />
+        <zeebe:formDefinition formId="approve-or-deny-the-repair-based-on-quote-0cvs6lr" />
       </bpmn:extensionElements>
-      <bpmn:incoming>Flow_0vm3i26</bpmn:incoming>
-      <bpmn:outgoing>Flow_11opvc4</bpmn:outgoing>
+      <bpmn:incoming>Flow_1wpn1ah</bpmn:incoming>
+      <bpmn:outgoing>Flow_0rd8ijc</bpmn:outgoing>
     </bpmn:userTask>
-    <bpmn:exclusiveGateway id="Gateway_092wnb4" name="Test passed?">
-      <bpmn:extensionElements />
-      <bpmn:incoming>Flow_11opvc4</bpmn:incoming>
-      <bpmn:outgoing>Flow_1mff4nj</bpmn:outgoing>
-      <bpmn:outgoing>Flow_11393jn</bpmn:outgoing>
+    <bpmn:manualTask id="Activity_0yfoilb" name="Ask customer to bring vehicle to the shop">
+      <bpmn:incoming>Flow_1uc340h</bpmn:incoming>
+      <bpmn:outgoing>Flow_0qgsmbe</bpmn:outgoing>
+    </bpmn:manualTask>
+    <bpmn:exclusiveGateway id="Gateway_1v44zl1" name="Breakdown requiring towing?">
+      <bpmn:incoming>Flow_04mywsm</bpmn:incoming>
+      <bpmn:outgoing>Flow_18bigm5</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1uc340h</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:sendTask id="Activity_01fxwqp" name="Notify reception of completed works">
-      <bpmn:extensionElements>
-        <zeebe:taskDefinition type="NotifyWorkComplete" />
-      </bpmn:extensionElements>
-      <bpmn:incoming>Flow_11393jn</bpmn:incoming>
-      <bpmn:outgoing>Flow_00wlo82</bpmn:outgoing>
-    </bpmn:sendTask>
-    <bpmn:userTask id="Activity_1g5ymwb" name="Verify customer satisfaction">
+    <bpmn:manualTask id="Activity_1hkk9hp" name="Bring vehicle to repair shop">
+      <bpmn:incoming>Flow_0qgsmbe</bpmn:incoming>
+      <bpmn:outgoing>Flow_1002xw9</bpmn:outgoing>
+    </bpmn:manualTask>
+    <bpmn:userTask id="Activity_12j5gdb" name="Calculate cost of repairs">
       <bpmn:extensionElements>
         <zeebe:userTask />
-        <zeebe:formDefinition formId="verify-repair-approval-1q57stk" />
+        <zeebe:formDefinition formId="calculate-cost-of-repairs-1hwzax9" />
       </bpmn:extensionElements>
-      <bpmn:incoming>Flow_072cxn4</bpmn:incoming>
-      <bpmn:outgoing>Flow_03prc27</bpmn:outgoing>
+      <bpmn:incoming>Flow_0tltfg9</bpmn:incoming>
+      <bpmn:outgoing>Flow_1a0uwse</bpmn:outgoing>
     </bpmn:userTask>
-    <bpmn:exclusiveGateway id="Gateway_1o45d1m" name="Repairs begin">
-      <bpmn:incoming>Flow_1pe3eoa</bpmn:incoming>
-      <bpmn:incoming>Flow_1mff4nj</bpmn:incoming>
-      <bpmn:incoming>Flow_097whgb</bpmn:incoming>
-      <bpmn:outgoing>Flow_1rpzex2</bpmn:outgoing>
-    </bpmn:exclusiveGateway>
-    <bpmn:startEvent id="Event_01f2boo" name="Recieve contact from customer">
-      <bpmn:outgoing>Flow_015cw5y</bpmn:outgoing>
-    </bpmn:startEvent>
-    <bpmn:receiveTask id="Activity_15blyu4" name="Receive Towing Request" messageRef="Message_1t3qq3b">
-      <bpmn:incoming>Flow_1imt80x</bpmn:incoming>
-      <bpmn:outgoing>Flow_0s3c7ae</bpmn:outgoing>
-    </bpmn:receiveTask>
-    <bpmn:manualTask id="Activity_1d73lio" name="Perform repair">
-      <bpmn:incoming>Flow_1rpzex2</bpmn:incoming>
-      <bpmn:outgoing>Flow_0vm3i26</bpmn:outgoing>
-    </bpmn:manualTask>
-    <bpmn:manualTask id="Activity_1lhf4vx" name="Perform diagnostics">
-      <bpmn:incoming>Flow_0zdt9ta</bpmn:incoming>
-      <bpmn:outgoing>Flow_0tltfg9</bpmn:outgoing>
-    </bpmn:manualTask>
-    <bpmn:sendTask id="Activity_1dxjko5" name="Send Calendly">
-      <bpmn:extensionElements>
-        <zeebe:taskDefinition type="arrangeCollection" />
-      </bpmn:extensionElements>
-      <bpmn:incoming>Flow_1r09uwm</bpmn:incoming>
-      <bpmn:outgoing>Flow_1ohnr7q</bpmn:outgoing>
-    </bpmn:sendTask>
-    <bpmn:sendTask id="Activity_1ods7z1" name="Notify customer of final quote and details">
-      <bpmn:extensionElements>
-        <zeebe:taskDefinition type="FinalQuote" />
-      </bpmn:extensionElements>
-      <bpmn:incoming>Flow_1xjxr3m</bpmn:incoming>
-      <bpmn:outgoing>Flow_1wpn1ah</bpmn:outgoing>
-    </bpmn:sendTask>
-    <bpmn:sendTask id="Activity_1tdj1nq" name="Notify customer and send Calendly">
-      <bpmn:extensionElements>
-        <zeebe:taskDefinition type="ArrangeCollection" />
-      </bpmn:extensionElements>
-      <bpmn:incoming>Flow_1lpbzau</bpmn:incoming>
-      <bpmn:outgoing>Flow_1eb3uoi</bpmn:outgoing>
-    </bpmn:sendTask>
-    <bpmn:userTask id="Activity_1stb38f" name="Gather info about customer and vehicle needs">
-      <bpmn:extensionElements>
-        <zeebe:userTask />
-        <zeebe:formDefinition formId="Form_0z5zdju" />
-      </bpmn:extensionElements>
-      <bpmn:incoming>Flow_015cw5y</bpmn:incoming>
-      <bpmn:outgoing>Flow_1yyzizz</bpmn:outgoing>
-    </bpmn:userTask>
-    <bpmn:exclusiveGateway id="Gateway_12fe6pg" name="Customer satisfied?">
-      <bpmn:incoming>Flow_1b1f1el</bpmn:incoming>
-      <bpmn:outgoing>Flow_0l3pk7v</bpmn:outgoing>
-      <bpmn:outgoing>Flow_097whgb</bpmn:outgoing>
-    </bpmn:exclusiveGateway>
-    <bpmn:endEvent id="Event_07adudc" name="Customer leaves with vehicle">
-      <bpmn:incoming>Flow_0l3pk7v</bpmn:incoming>
-    </bpmn:endEvent>
-    <bpmn:exclusiveGateway id="Gateway_13a1jxg" name="Customer has approved quote?">
-      <bpmn:incoming>Flow_0s7ycb0</bpmn:incoming>
-      <bpmn:outgoing>Flow_1r09uwm</bpmn:outgoing>
-      <bpmn:outgoing>Flow_1pe3eoa</bpmn:outgoing>
-    </bpmn:exclusiveGateway>
-    <bpmn:manualTask id="Activity_1qo6pw7" name="Collect vehicle and take to repair centre">
-      <bpmn:incoming>Flow_0s3c7ae</bpmn:incoming>
-      <bpmn:outgoing>Flow_13vrn2v</bpmn:outgoing>
-    </bpmn:manualTask>
-    <bpmn:manualTask id="Activity_0fblu15" name="Collect vehicle and inspect works">
-      <bpmn:extensionElements />
-      <bpmn:incoming>Flow_0itomdy</bpmn:incoming>
-      <bpmn:outgoing>Flow_072cxn4</bpmn:outgoing>
-    </bpmn:manualTask>
-    <bpmn:endEvent id="Event_1yf1xlh" name="Collect vehicle">
-      <bpmn:incoming>Flow_1wrm2af</bpmn:incoming>
-    </bpmn:endEvent>
-    <bpmn:serviceTask id="Activity_14oywxh" name="Calculate membership discounts if applicable">
-      <bpmn:extensionElements>
-        <zeebe:taskDefinition type="CalculateFinalPrice" />
-      </bpmn:extensionElements>
-      <bpmn:incoming>Flow_1s5nbf9</bpmn:incoming>
-      <bpmn:outgoing>Flow_1xjxr3m</bpmn:outgoing>
-    </bpmn:serviceTask>
     <bpmn:serviceTask id="Activity_06cbfor" name="Calculate initial payment&#10;(Deposit and membership fees)">
       <bpmn:extensionElements>
         <zeebe:taskDefinition type="InitialCostCheck" />
@@ -174,81 +92,143 @@
       <bpmn:incoming>Flow_1yyzizz</bpmn:incoming>
       <bpmn:outgoing>Flow_0ykafev</bpmn:outgoing>
     </bpmn:serviceTask>
-    <bpmn:manualTask id="Activity_1hkk9hp" name="Bring vehicle to repair shop">
-      <bpmn:incoming>Flow_0qgsmbe</bpmn:incoming>
-      <bpmn:outgoing>Flow_1002xw9</bpmn:outgoing>
-    </bpmn:manualTask>
-    <bpmn:exclusiveGateway id="Gateway_1v44zl1" name="Breakdown requiring towing?">
-      <bpmn:incoming>Flow_04mywsm</bpmn:incoming>
-      <bpmn:outgoing>Flow_18bigm5</bpmn:outgoing>
-      <bpmn:outgoing>Flow_1uc340h</bpmn:outgoing>
-    </bpmn:exclusiveGateway>
-    <bpmn:manualTask id="Activity_0yfoilb" name="Ask customer to bring vehicle to the shop">
-      <bpmn:incoming>Flow_1uc340h</bpmn:incoming>
-      <bpmn:outgoing>Flow_0qgsmbe</bpmn:outgoing>
-    </bpmn:manualTask>
-    <bpmn:userTask id="Activity_010rkbr" name="Approve or deny the repair based on quote">
+    <bpmn:serviceTask id="Activity_14oywxh" name="Calculate membership discounts if applicable">
       <bpmn:extensionElements>
-        <zeebe:userTask />
-        <zeebe:formDefinition formId="approve-or-deny-the-repair-based-on-quote-0cvs6lr" />
+        <zeebe:taskDefinition type="CalculateFinalPrice" />
       </bpmn:extensionElements>
-      <bpmn:incoming>Flow_1wpn1ah</bpmn:incoming>
-      <bpmn:outgoing>Flow_0rd8ijc</bpmn:outgoing>
-    </bpmn:userTask>
-    <bpmn:sendTask id="Activity_100dfbj" name="Send tow request and details to tow team">
-      <bpmn:extensionElements>
-        <zeebe:taskDefinition type="TowRequest" />
-      </bpmn:extensionElements>
-      <bpmn:incoming>Flow_18bigm5</bpmn:incoming>
-      <bpmn:outgoing>Flow_1imt80x</bpmn:outgoing>
-    </bpmn:sendTask>
+      <bpmn:incoming>Flow_1s5nbf9</bpmn:incoming>
+      <bpmn:outgoing>Flow_1xjxr3m</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="Event_1yf1xlh" name="Collect vehicle">
+      <bpmn:incoming>Flow_1wrm2af</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:manualTask id="Activity_0fblu15" name="Collect vehicle and inspect works">
+      <bpmn:extensionElements />
+      <bpmn:incoming>Flow_0itomdy</bpmn:incoming>
+      <bpmn:outgoing>Flow_072cxn4</bpmn:outgoing>
+    </bpmn:manualTask>
+    <bpmn:manualTask id="Activity_1qo6pw7" name="Collect vehicle and take to repair centre">
+      <bpmn:incoming>Flow_0s3c7ae</bpmn:incoming>
+      <bpmn:outgoing>Flow_13vrn2v</bpmn:outgoing>
+    </bpmn:manualTask>
     <bpmn:manualTask id="Activity_1gm3exs" name="Confirm receipt of deposit/inital payment">
       <bpmn:incoming>Flow_067o8ra</bpmn:incoming>
       <bpmn:outgoing>Flow_04mywsm</bpmn:outgoing>
     </bpmn:manualTask>
+    <bpmn:exclusiveGateway id="Gateway_13a1jxg" name="Customer has approved quote?">
+      <bpmn:incoming>Flow_0s7ycb0</bpmn:incoming>
+      <bpmn:outgoing>Flow_1r09uwm</bpmn:outgoing>
+      <bpmn:outgoing>Flow_1pe3eoa</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="Event_07adudc" name="Customer leaves with vehicle">
+      <bpmn:incoming>Flow_0l3pk7v</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="Gateway_12fe6pg" name="Customer satisfied?">
+      <bpmn:incoming>Flow_1b1f1el</bpmn:incoming>
+      <bpmn:outgoing>Flow_0l3pk7v</bpmn:outgoing>
+      <bpmn:outgoing>Flow_097whgb</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sequenceFlow id="Flow_00wlo82" sourceRef="Activity_01fxwqp" targetRef="Activity_1ml0a7y" />
+    <bpmn:sequenceFlow id="Flow_015cw5y" sourceRef="Event_01f2boo" targetRef="Activity_1stb38f" />
+    <bpmn:sequenceFlow id="Flow_03prc27" sourceRef="Activity_1g5ymwb" targetRef="Activity_10d10g3" />
+    <bpmn:sequenceFlow id="Flow_04mywsm" sourceRef="Activity_1gm3exs" targetRef="Gateway_1v44zl1" />
+    <bpmn:sequenceFlow id="Flow_067o8ra" sourceRef="Activity_0gemlqi" targetRef="Activity_1gm3exs" />
+    <bpmn:sequenceFlow id="Flow_072cxn4" sourceRef="Activity_0fblu15" targetRef="Activity_1g5ymwb" />
+    <bpmn:sequenceFlow id="Flow_07ay6cp" sourceRef="Activity_1f1y01m" targetRef="Activity_1vetocd" />
+    <bpmn:sequenceFlow id="Flow_0hveqlx" sourceRef="Activity_1vetocd" targetRef="Activity_0gemlqi" />
+    <bpmn:sequenceFlow id="Flow_0itomdy" sourceRef="Activity_18lz7cj" targetRef="Activity_0fblu15" />
+    <bpmn:sequenceFlow id="Flow_0qgsmbe" sourceRef="Activity_0yfoilb" targetRef="Activity_1hkk9hp" />
+    <bpmn:sequenceFlow id="Flow_0rd8ijc" sourceRef="Activity_010rkbr" targetRef="Activity_06d1qyy" />
+    <bpmn:sequenceFlow id="Flow_0s3c7ae" sourceRef="Activity_15blyu4" targetRef="Activity_1qo6pw7" />
+    <bpmn:sequenceFlow id="Flow_0s7ycb0" sourceRef="Activity_06d1qyy" targetRef="Gateway_13a1jxg" />
+    <bpmn:sequenceFlow id="Flow_0tltfg9" sourceRef="Activity_1lhf4vx" targetRef="Activity_12j5gdb" />
+    <bpmn:sequenceFlow id="Flow_0vm3i26" sourceRef="Activity_1d73lio" targetRef="Activity_18k98oy" />
+    <bpmn:sequenceFlow id="Flow_0ykafev" sourceRef="Activity_06cbfor" targetRef="Activity_1f1y01m" />
+    <bpmn:sequenceFlow id="Flow_0zdt9ta" sourceRef="Gateway_1jeq63o" targetRef="Activity_1lhf4vx" />
+    <bpmn:sequenceFlow id="Flow_1002xw9" sourceRef="Activity_1hkk9hp" targetRef="Gateway_1jeq63o" />
+    <bpmn:sequenceFlow id="Flow_11opvc4" sourceRef="Activity_18k98oy" targetRef="Gateway_092wnb4" />
+    <bpmn:sequenceFlow id="Flow_13vrn2v" sourceRef="Activity_1qo6pw7" targetRef="Gateway_1jeq63o" />
+    <bpmn:sequenceFlow id="Flow_1a0uwse" sourceRef="Activity_12j5gdb" targetRef="Activity_1ciz5r9" />
+    <bpmn:sequenceFlow id="Flow_1b1f1el" sourceRef="Activity_10d10g3" targetRef="Gateway_12fe6pg" />
+    <bpmn:sequenceFlow id="Flow_1eb3uoi" sourceRef="Activity_1tdj1nq" targetRef="Activity_18lz7cj" />
+    <bpmn:sequenceFlow id="Flow_1imt80x" sourceRef="Activity_100dfbj" targetRef="Activity_15blyu4" />
+    <bpmn:sequenceFlow id="Flow_1lpbzau" sourceRef="Activity_1ml0a7y" targetRef="Activity_1tdj1nq" />
+    <bpmn:sequenceFlow id="Flow_1ohnr7q" sourceRef="Activity_1dxjko5" targetRef="Activity_1mod3n1" />
+    <bpmn:sequenceFlow id="Flow_1rpzex2" sourceRef="Gateway_1o45d1m" targetRef="Activity_1d73lio" />
+    <bpmn:sequenceFlow id="Flow_1s5nbf9" sourceRef="Activity_1ciz5r9" targetRef="Activity_14oywxh" />
+    <bpmn:sequenceFlow id="Flow_1wpn1ah" sourceRef="Activity_1ods7z1" targetRef="Activity_010rkbr" />
+    <bpmn:sequenceFlow id="Flow_1wrm2af" sourceRef="Activity_1mod3n1" targetRef="Event_1yf1xlh" />
+    <bpmn:sequenceFlow id="Flow_1xjxr3m" sourceRef="Activity_14oywxh" targetRef="Activity_1ods7z1" />
+    <bpmn:sequenceFlow id="Flow_1yyzizz" sourceRef="Activity_1stb38f" targetRef="Activity_06cbfor" />
+    <bpmn:userTask id="Activity_1stb38f" name="Gather info about customer and vehicle needs">
+      <bpmn:extensionElements>
+        <zeebe:userTask />
+        <zeebe:formDefinition formId="Form_0z5zdju" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_015cw5y</bpmn:incoming>
+      <bpmn:outgoing>Flow_1yyzizz</bpmn:outgoing>
+    </bpmn:userTask>
     <bpmn:task id="Activity_1f1y01m" name="Inform customer of initial cost">
       <bpmn:incoming>Flow_0ykafev</bpmn:incoming>
       <bpmn:outgoing>Flow_07ay6cp</bpmn:outgoing>
     </bpmn:task>
-    <bpmn:task id="Activity_1vetocd" name="Recieve initial costs &#10;">
-      <bpmn:incoming>Flow_07ay6cp</bpmn:incoming>
-      <bpmn:outgoing>Flow_0hveqlx</bpmn:outgoing>
+    <bpmn:sequenceFlow id="Flow_097whgb" name="No" sourceRef="Gateway_12fe6pg" targetRef="Gateway_1o45d1m">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=CustomerSatisfied = false</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_1r09uwm" name="No" sourceRef="Gateway_13a1jxg" targetRef="Activity_1dxjko5">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=QuoteApproved = false</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_1uc340h" name="No" sourceRef="Gateway_1v44zl1" targetRef="Activity_0yfoilb">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=Breakdown = false</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_1mff4nj" name="No&#10;" sourceRef="Gateway_092wnb4" targetRef="Gateway_1o45d1m">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=TestsPassed = false</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sendTask id="Activity_1tdj1nq" name="Notify customer and send Calendly">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="ArrangeCollection" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1lpbzau</bpmn:incoming>
+      <bpmn:outgoing>Flow_1eb3uoi</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:sendTask id="Activity_1ods7z1" name="Notify customer of final quote and details">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="FinalQuote" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1xjxr3m</bpmn:incoming>
+      <bpmn:outgoing>Flow_1wpn1ah</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:sendTask id="Activity_01fxwqp" name="Notify reception of completed works">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="NotifyWorkComplete" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_11393jn</bpmn:incoming>
+      <bpmn:outgoing>Flow_00wlo82</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:task id="Activity_1ciz5r9" name="Notify receptionist of repair costs">
+      <bpmn:incoming>Flow_1a0uwse</bpmn:incoming>
+      <bpmn:outgoing>Flow_1s5nbf9</bpmn:outgoing>
     </bpmn:task>
     <bpmn:manualTask id="Activity_0gemlqi" name="Pay initial costs">
       <bpmn:incoming>Flow_0hveqlx</bpmn:incoming>
       <bpmn:outgoing>Flow_067o8ra</bpmn:outgoing>
     </bpmn:manualTask>
-    <bpmn:userTask id="Activity_12j5gdb" name="Calculate cost of repairs">
+    <bpmn:manualTask id="Activity_1lhf4vx" name="Perform diagnostics">
+      <bpmn:incoming>Flow_0zdt9ta</bpmn:incoming>
+      <bpmn:outgoing>Flow_0tltfg9</bpmn:outgoing>
+    </bpmn:manualTask>
+    <bpmn:manualTask id="Activity_1d73lio" name="Perform repair">
+      <bpmn:incoming>Flow_1rpzex2</bpmn:incoming>
+      <bpmn:outgoing>Flow_0vm3i26</bpmn:outgoing>
+    </bpmn:manualTask>
+    <bpmn:userTask id="Activity_18k98oy" name="Perform rigourous testing">
       <bpmn:extensionElements>
         <zeebe:userTask />
-        <zeebe:formDefinition formId="calculate-cost-of-repairs-1hwzax9" />
+        <zeebe:formDefinition formId="perform-rigourous-testing-1j8tjnu" />
       </bpmn:extensionElements>
-      <bpmn:incoming>Flow_0tltfg9</bpmn:incoming>
-      <bpmn:outgoing>Flow_1a0uwse</bpmn:outgoing>
+      <bpmn:incoming>Flow_0vm3i26</bpmn:incoming>
+      <bpmn:outgoing>Flow_11opvc4</bpmn:outgoing>
     </bpmn:userTask>
-    <bpmn:task id="Activity_1ciz5r9" name="Notify receptionist of repair costs">
-      <bpmn:incoming>Flow_1a0uwse</bpmn:incoming>
-      <bpmn:outgoing>Flow_1s5nbf9</bpmn:outgoing>
-    </bpmn:task>
-    <bpmn:exclusiveGateway id="Gateway_1jeq63o" name="Vehicle arrives">
-      <bpmn:incoming>Flow_1002xw9</bpmn:incoming>
-      <bpmn:incoming>Flow_13vrn2v</bpmn:incoming>
-      <bpmn:outgoing>Flow_0zdt9ta</bpmn:outgoing>
-    </bpmn:exclusiveGateway>
-    <bpmn:serviceTask id="Activity_06d1qyy" name="Process customer approval or denial">
-      <bpmn:extensionElements>
-        <zeebe:taskDefinition type="process-approval" />
-      </bpmn:extensionElements>
-      <bpmn:incoming>Flow_0rd8ijc</bpmn:incoming>
-      <bpmn:outgoing>Flow_0s7ycb0</bpmn:outgoing>
-    </bpmn:serviceTask>
-    <bpmn:serviceTask id="Activity_1ml0a7y" name="Repair completion notification">
-      <bpmn:extensionElements>
-        <zeebe:taskDefinition type="repair-complete-notify" />
-      </bpmn:extensionElements>
-      <bpmn:incoming>Flow_00wlo82</bpmn:incoming>
-      <bpmn:outgoing>Flow_1lpbzau</bpmn:outgoing>
-    </bpmn:serviceTask>
     <bpmn:serviceTask id="Activity_18lz7cj" name="Process booking and confirm pick-up">
       <bpmn:extensionElements>
         <zeebe:taskDefinition type="process-booking" />
@@ -263,62 +243,13 @@
       <bpmn:incoming>Flow_1ohnr7q</bpmn:incoming>
       <bpmn:outgoing>Flow_1wrm2af</bpmn:outgoing>
     </bpmn:serviceTask>
-    <bpmn:sequenceFlow id="Flow_0vm3i26" sourceRef="Activity_1d73lio" targetRef="Activity_18k98oy" />
-    <bpmn:sequenceFlow id="Flow_11opvc4" sourceRef="Activity_18k98oy" targetRef="Gateway_092wnb4" />
-    <bpmn:sequenceFlow id="Flow_1mff4nj" name="No&#10;" sourceRef="Gateway_092wnb4" targetRef="Gateway_1o45d1m">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=TestsPassed = false</bpmn:conditionExpression>
-    </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id="Flow_11393jn" name="yes&#10;" sourceRef="Gateway_092wnb4" targetRef="Activity_01fxwqp">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=TestsPassed</bpmn:conditionExpression>
-    </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id="Flow_00wlo82" sourceRef="Activity_01fxwqp" targetRef="Activity_1ml0a7y" />
-    <bpmn:sequenceFlow id="Flow_072cxn4" sourceRef="Activity_0fblu15" targetRef="Activity_1g5ymwb" />
-    <bpmn:sequenceFlow id="Flow_03prc27" sourceRef="Activity_1g5ymwb" targetRef="Activity_10d10g3" />
-    <bpmn:sequenceFlow id="Flow_1pe3eoa" name="Yes" sourceRef="Gateway_13a1jxg" targetRef="Gateway_1o45d1m">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=QuoteApproved</bpmn:conditionExpression>
-    </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id="Flow_097whgb" name="No" sourceRef="Gateway_12fe6pg" targetRef="Gateway_1o45d1m">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=CustomerSatisfied = false</bpmn:conditionExpression>
-    </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id="Flow_1rpzex2" sourceRef="Gateway_1o45d1m" targetRef="Activity_1d73lio" />
-    <bpmn:sequenceFlow id="Flow_015cw5y" sourceRef="Event_01f2boo" targetRef="Activity_1stb38f" />
-    <bpmn:sequenceFlow id="Flow_1b1f1el" sourceRef="Activity_10d10g3" targetRef="Gateway_12fe6pg" />
-    <bpmn:sequenceFlow id="Flow_1imt80x" sourceRef="Activity_100dfbj" targetRef="Activity_15blyu4" />
-    <bpmn:sequenceFlow id="Flow_0s3c7ae" sourceRef="Activity_15blyu4" targetRef="Activity_1qo6pw7" />
-    <bpmn:sequenceFlow id="Flow_0zdt9ta" sourceRef="Gateway_1jeq63o" targetRef="Activity_1lhf4vx" />
-    <bpmn:sequenceFlow id="Flow_0tltfg9" sourceRef="Activity_1lhf4vx" targetRef="Activity_12j5gdb" />
-    <bpmn:sequenceFlow id="Flow_1r09uwm" name="No" sourceRef="Gateway_13a1jxg" targetRef="Activity_1dxjko5">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=QuoteApproved = false</bpmn:conditionExpression>
-    </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id="Flow_1ohnr7q" sourceRef="Activity_1dxjko5" targetRef="Activity_1mod3n1" />
-    <bpmn:sequenceFlow id="Flow_1xjxr3m" sourceRef="Activity_14oywxh" targetRef="Activity_1ods7z1" />
-    <bpmn:sequenceFlow id="Flow_1wpn1ah" sourceRef="Activity_1ods7z1" targetRef="Activity_010rkbr" />
-    <bpmn:sequenceFlow id="Flow_1lpbzau" sourceRef="Activity_1ml0a7y" targetRef="Activity_1tdj1nq" />
-    <bpmn:sequenceFlow id="Flow_1eb3uoi" sourceRef="Activity_1tdj1nq" targetRef="Activity_18lz7cj" />
-    <bpmn:sequenceFlow id="Flow_1yyzizz" sourceRef="Activity_1stb38f" targetRef="Activity_06cbfor" />
-    <bpmn:sequenceFlow id="Flow_0l3pk7v" name="Yes" sourceRef="Gateway_12fe6pg" targetRef="Event_07adudc">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=CustomerSatisfied</bpmn:conditionExpression>
-    </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id="Flow_0s7ycb0" sourceRef="Activity_06d1qyy" targetRef="Gateway_13a1jxg" />
-    <bpmn:sequenceFlow id="Flow_13vrn2v" sourceRef="Activity_1qo6pw7" targetRef="Gateway_1jeq63o" />
-    <bpmn:sequenceFlow id="Flow_0itomdy" sourceRef="Activity_18lz7cj" targetRef="Activity_0fblu15" />
-    <bpmn:sequenceFlow id="Flow_1wrm2af" sourceRef="Activity_1mod3n1" targetRef="Event_1yf1xlh" />
-    <bpmn:sequenceFlow id="Flow_1s5nbf9" sourceRef="Activity_1ciz5r9" targetRef="Activity_14oywxh" />
-    <bpmn:sequenceFlow id="Flow_0ykafev" sourceRef="Activity_06cbfor" targetRef="Activity_1f1y01m" />
-    <bpmn:sequenceFlow id="Flow_0qgsmbe" sourceRef="Activity_0yfoilb" targetRef="Activity_1hkk9hp" />
-    <bpmn:sequenceFlow id="Flow_1002xw9" sourceRef="Activity_1hkk9hp" targetRef="Gateway_1jeq63o" />
-    <bpmn:sequenceFlow id="Flow_04mywsm" sourceRef="Activity_1gm3exs" targetRef="Gateway_1v44zl1" />
-    <bpmn:sequenceFlow id="Flow_18bigm5" name="Yes" sourceRef="Gateway_1v44zl1" targetRef="Activity_100dfbj">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=Breakdown</bpmn:conditionExpression>
-    </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id="Flow_1uc340h" name="No" sourceRef="Gateway_1v44zl1" targetRef="Activity_0yfoilb">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=Breakdown = false</bpmn:conditionExpression>
-    </bpmn:sequenceFlow>
-    <bpmn:sequenceFlow id="Flow_0rd8ijc" sourceRef="Activity_010rkbr" targetRef="Activity_06d1qyy" />
-    <bpmn:sequenceFlow id="Flow_067o8ra" sourceRef="Activity_0gemlqi" targetRef="Activity_1gm3exs" />
-    <bpmn:sequenceFlow id="Flow_07ay6cp" sourceRef="Activity_1f1y01m" targetRef="Activity_1vetocd" />
-    <bpmn:sequenceFlow id="Flow_0hveqlx" sourceRef="Activity_1vetocd" targetRef="Activity_0gemlqi" />
-    <bpmn:sequenceFlow id="Flow_1a0uwse" sourceRef="Activity_12j5gdb" targetRef="Activity_1ciz5r9" />
+    <bpmn:serviceTask id="Activity_06d1qyy" name="Process customer approval or denial">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="process-approval" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0rd8ijc</bpmn:incoming>
+      <bpmn:outgoing>Flow_0s7ycb0</bpmn:outgoing>
+    </bpmn:serviceTask>
     <bpmn:serviceTask id="Activity_10d10g3" name="Process customer satisfaction">
       <bpmn:extensionElements>
         <zeebe:taskDefinition type="process-satisfaction" />
@@ -326,6 +257,78 @@
       <bpmn:incoming>Flow_03prc27</bpmn:incoming>
       <bpmn:outgoing>Flow_1b1f1el</bpmn:outgoing>
     </bpmn:serviceTask>
+    <bpmn:serviceTask id="Activity_15blyu4" name="Process towing request, notify crew">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="process-tow-request" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1imt80x</bpmn:incoming>
+      <bpmn:outgoing>Flow_0s3c7ae</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:startEvent id="Event_01f2boo" name="Recieve contact from customer">
+      <bpmn:outgoing>Flow_015cw5y</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="Activity_1vetocd" name="Recieve initial costs &#10;">
+      <bpmn:incoming>Flow_07ay6cp</bpmn:incoming>
+      <bpmn:outgoing>Flow_0hveqlx</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:serviceTask id="Activity_1ml0a7y" name="Repair completion notification">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="repair-complete-notify" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_00wlo82</bpmn:incoming>
+      <bpmn:outgoing>Flow_1lpbzau</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="Gateway_1o45d1m" name="Repairs begin">
+      <bpmn:incoming>Flow_1pe3eoa</bpmn:incoming>
+      <bpmn:incoming>Flow_1mff4nj</bpmn:incoming>
+      <bpmn:incoming>Flow_097whgb</bpmn:incoming>
+      <bpmn:outgoing>Flow_1rpzex2</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:sendTask id="Activity_1dxjko5" name="Send Calendly">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="arrangeCollection" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1r09uwm</bpmn:incoming>
+      <bpmn:outgoing>Flow_1ohnr7q</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:sendTask id="Activity_100dfbj" name="Send tow request and details to tow team">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="TowRequest" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_18bigm5</bpmn:incoming>
+      <bpmn:outgoing>Flow_1imt80x</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:exclusiveGateway id="Gateway_092wnb4" name="Test passed?">
+      <bpmn:extensionElements />
+      <bpmn:incoming>Flow_11opvc4</bpmn:incoming>
+      <bpmn:outgoing>Flow_1mff4nj</bpmn:outgoing>
+      <bpmn:outgoing>Flow_11393jn</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:exclusiveGateway id="Gateway_1jeq63o" name="Vehicle arrives">
+      <bpmn:incoming>Flow_1002xw9</bpmn:incoming>
+      <bpmn:incoming>Flow_13vrn2v</bpmn:incoming>
+      <bpmn:outgoing>Flow_0zdt9ta</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Activity_1g5ymwb" name="Verify customer satisfaction">
+      <bpmn:extensionElements>
+        <zeebe:userTask />
+        <zeebe:formDefinition formId="verify-repair-approval-1q57stk" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_072cxn4</bpmn:incoming>
+      <bpmn:outgoing>Flow_03prc27</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_1pe3eoa" name="Yes" sourceRef="Gateway_13a1jxg" targetRef="Gateway_1o45d1m">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=QuoteApproved</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_0l3pk7v" name="Yes" sourceRef="Gateway_12fe6pg" targetRef="Event_07adudc">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=CustomerSatisfied</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_18bigm5" name="Yes" sourceRef="Gateway_1v44zl1" targetRef="Activity_100dfbj">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=Breakdown</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_11393jn" name="yes&#10;" sourceRef="Gateway_092wnb4" targetRef="Activity_01fxwqp">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=TestsPassed</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
   </bpmn:process>
   <bpmn:message id="Message_0194njs" name="Message_0194njs">
     <bpmn:extensionElements>
@@ -402,10 +405,6 @@
         <bpmndi:BPMNLabel>
           <dc:Bounds x="234" y="429" width="79" height="27" />
         </bpmndi:BPMNLabel>
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Activity_03zbo1t_di" bpmnElement="Activity_15blyu4">
-        <dc:Bounds x="1017" y="825" width="100" height="80" />
-        <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_0pjg1qr_di" bpmnElement="Activity_1d73lio">
         <dc:Bounds x="2077" y="583" width="100" height="80" />
@@ -533,6 +532,10 @@
         <dc:Bounds x="2857" y="353" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_047e5kk_di" bpmnElement="Activity_15blyu4">
+        <dc:Bounds x="1017" y="825" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_0vm3i26_di" bpmnElement="Flow_0vm3i26">
         <di:waypoint x="2177" y="623" />
         <di:waypoint x="2207" y="623" />
@@ -579,9 +582,9 @@
       <bpmndi:BPMNEdge id="Flow_097whgb_di" bpmnElement="Flow_097whgb">
         <di:waypoint x="3067" y="410" />
         <di:waypoint x="3067" y="755" />
-        <di:waypoint x="1737" y="755" />
-        <di:waypoint x="1737" y="623" />
-        <di:waypoint x="1977" y="623" />
+        <di:waypoint x="1940" y="755" />
+        <di:waypoint x="1940" y="623" />
+        <di:waypoint x="1982" y="623" />
         <bpmndi:BPMNLabel>
           <dc:Bounds x="3079" y="451" width="15" height="14" />
         </bpmndi:BPMNLabel>
