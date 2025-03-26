@@ -19,11 +19,11 @@
         <bpmn:flowNodeRef>Activity_1dxjko5</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_10d10g3</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Event_01f2boo</bpmn:flowNodeRef>
-        <bpmn:flowNodeRef>Activity_1ml0a7y</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_100dfbj</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_1gm3exs</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_1f1y01m</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Activity_06d1qyy</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Activity_1ml0a7y</bpmn:flowNodeRef>
       </bpmn:lane>
       <bpmn:lane id="Lane_0r5ctp2" name="Customer">
         <bpmn:flowNodeRef>Activity_010rkbr</bpmn:flowNodeRef>
@@ -235,6 +235,13 @@
       <bpmn:incoming>Flow_0vm3i26</bpmn:incoming>
       <bpmn:outgoing>Flow_11opvc4</bpmn:outgoing>
     </bpmn:userTask>
+    <bpmn:serviceTask id="Activity_06d1qyy" name="Process customer approval or denial">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="process-approval" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_0rd8ijc</bpmn:incoming>
+      <bpmn:outgoing>Flow_0s7ycb0</bpmn:outgoing>
+    </bpmn:serviceTask>
     <bpmn:receiveTask id="Activity_15blyu4" name="Receive Towing Request" messageRef="Message_1t3qq3b">
       <bpmn:incoming>Flow_1imt80x</bpmn:incoming>
       <bpmn:outgoing>Flow_0s3c7ae</bpmn:outgoing>
@@ -258,10 +265,6 @@
       <bpmn:incoming>Flow_07ay6cp</bpmn:incoming>
       <bpmn:outgoing>Flow_0hveqlx</bpmn:outgoing>
     </bpmn:task>
-    <bpmn:receiveTask id="Activity_1ml0a7y" name="Recieve notice of completed works " messageRef="Message_0dtlj6j">
-      <bpmn:incoming>Flow_00wlo82</bpmn:incoming>
-      <bpmn:outgoing>Flow_1lpbzau</bpmn:outgoing>
-    </bpmn:receiveTask>
     <bpmn:exclusiveGateway id="Gateway_1o45d1m" name="Repairs begin">
       <bpmn:incoming>Flow_1pe3eoa</bpmn:incoming>
       <bpmn:incoming>Flow_1mff4nj</bpmn:incoming>
@@ -307,12 +310,12 @@
     <bpmn:sequenceFlow id="Flow_11393jn" name="yes&#10;" sourceRef="Gateway_092wnb4" targetRef="Activity_01fxwqp">
       <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=TestsPassed</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
-    <bpmn:serviceTask id="Activity_06d1qyy" name="Process customer approval or denial">
+    <bpmn:serviceTask id="Activity_1ml0a7y" name="Repair completion notification">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="process-approval" />
+        <zeebe:taskDefinition type="repair-complete-notify" />
       </bpmn:extensionElements>
-      <bpmn:incoming>Flow_0rd8ijc</bpmn:incoming>
-      <bpmn:outgoing>Flow_0s7ycb0</bpmn:outgoing>
+      <bpmn:incoming>Flow_00wlo82</bpmn:incoming>
+      <bpmn:outgoing>Flow_1lpbzau</bpmn:outgoing>
     </bpmn:serviceTask>
   </bpmn:process>
   <bpmn:message id="Message_0194njs" name="Message_0194njs">
@@ -365,10 +368,6 @@
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Lane_1tq057o_di" bpmnElement="Lane_1tq057o" isHorizontal="true">
         <dc:Bounds x="195" y="250" width="3195" height="298" />
-        <bpmndi:BPMNLabel />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Activity_1syo0ob_di" bpmnElement="Activity_1ml0a7y">
-        <dc:Bounds x="2440" y="358" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_0f8s6d8_di" bpmnElement="Activity_18k98oy">
@@ -520,6 +519,10 @@
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_0c4qgco_di" bpmnElement="Activity_06d1qyy">
         <dc:Bounds x="1830" y="368" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0gkqmg3_di" bpmnElement="Activity_1ml0a7y">
+        <dc:Bounds x="2440" y="358" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_1mff4nj_di" bpmnElement="Flow_1mff4nj">

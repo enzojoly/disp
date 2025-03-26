@@ -122,14 +122,11 @@ public class Worker {
             // Check multiple possible variable names that might contain approval
             Boolean approved = false;
 
-            if (variables.containsKey("approved")) {
-                approved = (Boolean) variables.get("approved");
-            } else if (variables.containsKey("approval")) {
-                approved = (Boolean) variables.get("approval");
-            } else if (variables.containsKey("quoteApproved")) {
-                approved = (Boolean) variables.get("quoteApproved");
+            // Check for "Approved" with capital A first (this is what your form uses)
+            if (variables.containsKey("Approved")) {
+                approved = (Boolean) variables.get("Approved");
+                System.out.println("Found 'Approved' variable: " + approved);
             } else {
-                // Default to false if no approval variable is found
                 System.out.println("No approval variable found, defaulting to false");
             }
 
@@ -150,6 +147,38 @@ public class Worker {
             client.newFailCommand(job.getKey())
                   .retries(job.getRetries() - 1)
                   .errorMessage("Error processing approval: " + e.getMessage())
+                  .send();
+        }
+    }
+
+    /**
+     * Worker to process repair completion notification
+     */
+    @ZeebeWorker(type = "repair-complete-notify")
+    public void processRepairCompletion(final JobClient client, final ActivatedJob job) {
+        Map<String, Object> variables = job.getVariablesAsMap();
+
+        try {
+            System.out.println("Processing repair completion notification for the receptionist");
+            System.out.println("Repair completion details being recorded for customer notification");
+
+            // Create output variables
+            HashMap<String, Object> resultVariables = new HashMap<>();
+            resultVariables.put("repairCompletionProcessed", true);
+            resultVariables.put("repairCompletionTimestamp", System.currentTimeMillis());
+
+            // Complete the job
+            client.newCompleteCommand(job.getKey())
+                  .variables(resultVariables)
+                  .send()
+                  .exceptionally((throwable -> {
+                      throw new RuntimeException("Could not process repair completion", throwable);
+                  }));
+
+        } catch (Exception e) {
+            client.newFailCommand(job.getKey())
+                  .retries(job.getRetries() - 1)
+                  .errorMessage("Error processing repair completion: " + e.getMessage())
                   .send();
         }
     }
