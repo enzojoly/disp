@@ -266,7 +266,7 @@
     <bpmn:sequenceFlow id="Flow_0vm3i26" sourceRef="Activity_1d73lio" targetRef="Activity_18k98oy" />
     <bpmn:sequenceFlow id="Flow_11opvc4" sourceRef="Activity_18k98oy" targetRef="Gateway_092wnb4" />
     <bpmn:sequenceFlow id="Flow_1mff4nj" name="No&#10;" sourceRef="Gateway_092wnb4" targetRef="Gateway_1o45d1m">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=TestsPassed == false</bpmn:conditionExpression>
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=TestsPassed = false</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_11393jn" name="yes&#10;" sourceRef="Gateway_092wnb4" targetRef="Activity_01fxwqp">
       <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=TestsPassed</bpmn:conditionExpression>
@@ -278,7 +278,7 @@
       <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=QuoteApproved</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_097whgb" name="No" sourceRef="Gateway_12fe6pg" targetRef="Gateway_1o45d1m">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=CustomerSatisfied == false</bpmn:conditionExpression>
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=CustomerSatisfied = false</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_1rpzex2" sourceRef="Gateway_1o45d1m" targetRef="Activity_1d73lio" />
     <bpmn:sequenceFlow id="Flow_015cw5y" sourceRef="Event_01f2boo" targetRef="Activity_1stb38f" />
@@ -288,7 +288,7 @@
     <bpmn:sequenceFlow id="Flow_0zdt9ta" sourceRef="Gateway_1jeq63o" targetRef="Activity_1lhf4vx" />
     <bpmn:sequenceFlow id="Flow_0tltfg9" sourceRef="Activity_1lhf4vx" targetRef="Activity_12j5gdb" />
     <bpmn:sequenceFlow id="Flow_1r09uwm" name="No" sourceRef="Gateway_13a1jxg" targetRef="Activity_1dxjko5">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=QuoteApproved == false</bpmn:conditionExpression>
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=QuoteApproved = false</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_1ohnr7q" sourceRef="Activity_1dxjko5" targetRef="Activity_1mod3n1" />
     <bpmn:sequenceFlow id="Flow_1xjxr3m" sourceRef="Activity_14oywxh" targetRef="Activity_1ods7z1" />
@@ -312,7 +312,7 @@
       <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=Breakdown</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_1uc340h" name="No" sourceRef="Gateway_1v44zl1" targetRef="Activity_0yfoilb">
-      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=Breakdown == false</bpmn:conditionExpression>
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=Breakdown = false</bpmn:conditionExpression>
     </bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_0rd8ijc" sourceRef="Activity_010rkbr" targetRef="Activity_06d1qyy" />
     <bpmn:sequenceFlow id="Flow_067o8ra" sourceRef="Activity_0gemlqi" targetRef="Activity_1gm3exs" />
