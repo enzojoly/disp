@@ -6,6 +6,10 @@ zeebe:
       clientId: 2IwpE9J_U94SCeW82CQCKNXHCoT3o5.D
       clientSecret: dHLMYTvGqxQACs7cZBYhX32UfMA58nzDr7GmWe0bhoyDw~U-S4aADd7AkNKKaEj2
 
+calendly:
+  booking:
+    url: https://calendly.com/business-enzojoly/30min
+
 # Create your API key via https://api-ninjas.com/profile
 api-ninjas:
   key: 0lrEuA80z4oFM14SD5bYnQ==z2wFXsZKrsJ4R4FR
