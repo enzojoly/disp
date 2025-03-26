@@ -975,16 +975,17 @@ public class Worker {
 
     /**
      * Helper method to get string value from multiple possible variable names
+     * Fixed to avoid null pointer exceptions
      * @param variables The variable map
      * @param keys Multiple possible keys to try
      * @return The first non-null value found, or null if none found
      */
     private String getStringValue(Map<String, Object> variables, String... keys) {
-        if (keys.length == 0) return null;
+        if (keys == null || keys.length == 0) return null;
 
         // Try each key in order
         for (String key : keys) {
-            if (variables.containsKey(key) && variables.get(key) != null) {
+            if (key != null && variables.containsKey(key) && variables.get(key) != null) {
                 Object value = variables.get(key);
                 if (value instanceof String) {
                     return (String) value;
@@ -995,9 +996,11 @@ public class Worker {
         }
 
         // If we get here and there's a default value provided as the last key
-        if (keys.length > 0 && !keys[keys.length-1].contains(".")) {
+        // Check if the last key could be a default value (no dots in it)
+        String lastKey = keys[keys.length-1];
+        if (lastKey != null && !lastKey.contains(".")) {
             // The last key might be a default value, not a key to search for
-            return keys[keys.length-1];
+            return lastKey;
         }
 
         return null;
