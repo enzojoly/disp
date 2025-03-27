@@ -262,7 +262,7 @@
     </bpmn:exclusiveGateway>
     <bpmn:sendTask id="Activity_1dxjko5" name="Send Calendly">
       <bpmn:extensionElements>
-        <zeebe:taskDefinition type="arrangeCollection" />
+        <zeebe:taskDefinition type="ArrangeCollection" />
       </bpmn:extensionElements>
       <bpmn:incoming>Flow_1r09uwm</bpmn:incoming>
       <bpmn:outgoing>Flow_1ohnr7q</bpmn:outgoing>
@@ -345,7 +345,7 @@
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_2e2qdo7" name="Message_2e2qdo7" />
-  <bpmn:message id="Message_2f796gc" name="Message_2f796gc">
+  <bpmn:message id="Message_2f796gc" name="ReceiveInitialCost">
     <bpmn:extensionElements>
       <zeebe:subscription correlationKey="=processInstanceKey" />
     </bpmn:extensionElements>
