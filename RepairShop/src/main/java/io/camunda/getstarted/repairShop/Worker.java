@@ -51,20 +51,23 @@ public class Worker {
         public static final String DEPOSIT_AMOUNT = "depositAmount";
         public static final String FINAL_PRICE = "finalPrice";
         public static final String INITIAL_COST_RECEIVED = "initialCostReceived";
+        public static final String REPAIR_COST = "repairCost";
 
         // Process instance key for message correlation
         public static final String PROCESS_INSTANCE_KEY = "processInstanceKey";
     }
 
     /**
-     * Constants for message names
+     * Constants for message names - ensure these match the BPMN message names exactly
      */
     public static class MessageNames {
-        // Change this to match your BPMN message name
-        public static final String RECEIVE_INITIAL_COST = "Message_2f796gc";
+        // Use the exact message names from your BPMN file
+        public static final String RECEIVE_INITIAL_COST = "ReceiveInitialCost";
         public static final String TOW_REQUEST = "TowingRequest";
         public static final String APPROVAL = "Approval";
         public static final String WORKS_COMPLETE = "WorksComplete";
+        public static final String QUOTE_NOTIFICATION = "QuoteNotification";
+        public static final String COLLECTION_ARRANGED = "CollectionArranged";
     }
 
     public static void main(String[] args) {
@@ -175,6 +178,87 @@ public class Worker {
                   .retries(job.getRetries() - 1)
                   .errorMessage("Error informing customer of initial cost: " + e.getMessage())
                   .send();
+        }
+    }
+
+    /**
+     * Worker to notify receptionist of repair costs
+     */
+    @ZeebeWorker(type = "notify-reception-costing")
+    public void notifyReceptionOfCosts(final JobClient client, final ActivatedJob job) {
+        Map<String, Object> variables = job.getVariablesAsMap();
+
+        try {
+            // Get repair cost
+            double repairCost = ((Number) variables.getOrDefault(ProcessVariables.REPAIR_COST, 0.0)).doubleValue();
+
+            // Get vehicle information
+            String vehicleMake = getStringValue(variables, ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make");
+            String vehicleModel = getStringValue(variables, ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model");
+            String faultDescription = getStringValue(variables,
+                    ProcessVariables.FAULT_DESCRIPTION, "extraDetails", "faultDescription");
+
+            logger.info("Notifying reception of repair costs for {} {}: ${}",
+                    vehicleMake, vehicleModel, repairCost);
+            logger.info("Fault description: {}", faultDescription);
+
+            // Get the process instance key for correlation
+            String processInstanceKey = String.valueOf(job.getProcessInstanceKey());
+
+            // Create output variables
+            HashMap<String, Object> resultVariables = new HashMap<>();
+            resultVariables.put(ProcessVariables.REPAIR_COST, repairCost);
+            resultVariables.put("repairCostingNotified", true);
+            resultVariables.put("costingTimestamp", System.currentTimeMillis());
+            resultVariables.put(ProcessVariables.PROCESS_INSTANCE_KEY, processInstanceKey);
+
+            // Preserve important information
+            resultVariables.put(ProcessVariables.VEHICLE_MAKE, vehicleMake);
+            resultVariables.put(ProcessVariables.VEHICLE_MODEL, vehicleModel);
+            resultVariables.put(ProcessVariables.FAULT_DESCRIPTION, faultDescription);
+
+            // Preserve customer information
+            String customerName = getStringValue(variables,
+                    ProcessVariables.CUSTOMER_NAME, "CustomerName", "name");
+            String customerEmail = getStringValue(variables,
+                    ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email");
+
+            if (customerName != null) {
+                resultVariables.put(ProcessVariables.CUSTOMER_NAME, customerName);
+            }
+            if (customerEmail != null) {
+                resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
+            }
+
+            // Preserve membership status
+            boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
+                                    Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                                    Boolean.TRUE.equals(variables.get("SigningUp"));
+
+            resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
+
+            // Create message variables for potential receivers
+            Map<String, Object> messageVariables = new HashMap<>();
+            messageVariables.put(ProcessVariables.REPAIR_COST, repairCost);
+            messageVariables.put("notifiedTimestamp", System.currentTimeMillis());
+            messageVariables.put("vehicleDetails", vehicleMake + " " + vehicleModel);
+
+            // Complete the job first
+            client.newCompleteCommand(job.getKey())
+                .variables(resultVariables)
+                .send()
+                .join();
+
+            // Then send the message (if there are message-waiting tasks for this)
+            // This is optional depending on your BPMN design
+            // sendMessage("RepairCostNotification", processInstanceKey, messageVariables);
+
+        } catch (Exception e) {
+            logger.error("Error in notify-reception-costing worker", e);
+            client.newFailCommand(job.getKey())
+                .retries(job.getRetries() - 1)
+                .errorMessage("Error notifying reception of costs: " + e.getMessage())
+                .send();
         }
     }
 
@@ -407,12 +491,12 @@ public class Worker {
             logger.info("CalculateFinalPrice received variables: {}", variables.keySet());
 
             // Set default repair cost for demo if not provided
-            if (!variables.containsKey("repairCost")) {
-                variables.put("repairCost", 500.0); // Default repair cost
+            if (!variables.containsKey(ProcessVariables.REPAIR_COST)) {
+                variables.put(ProcessVariables.REPAIR_COST, 500.0); // Default repair cost
             }
 
             // Get repair cost and membership status - check all possible field names
-            double repairCost = ((Number) variables.getOrDefault("repairCost", 500.0)).doubleValue();
+            double repairCost = ((Number) variables.getOrDefault(ProcessVariables.REPAIR_COST, 500.0)).doubleValue();
 
             // Check multiple fields for membership status
             boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
@@ -434,6 +518,7 @@ public class Worker {
             // Output variables
             HashMap<String, Object> resultVariables = new HashMap<>();
             resultVariables.put(ProcessVariables.FINAL_PRICE, finalPrice);
+            resultVariables.put(ProcessVariables.REPAIR_COST, repairCost);
             resultVariables.put("discountApplied", membershipStatus);
             resultVariables.put("discountPercentage", discountPercentage);
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus); // Keep consistent membership status
@@ -614,6 +699,7 @@ public class Worker {
             Map<String, Object> messageVariables = new HashMap<>();
             messageVariables.put("worksCompleted", true);
             messageVariables.put("completionTimestamp", System.currentTimeMillis());
+            messageVariables.put("vehicleDetails", vehicleMake + " " + vehicleModel);
 
             // Complete the job first
             client.newCompleteCommand(job.getKey())
@@ -958,13 +1044,20 @@ public class Worker {
 
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
-            // Complete the job
+            // Message variables
+            Map<String, Object> messageVariables = new HashMap<>();
+            messageVariables.put("bookingLink", bookingLink);
+            messageVariables.put("collectionArranged", true);
+            messageVariables.put("arrangedTimestamp", System.currentTimeMillis());
+
+            // Complete the job first
             client.newCompleteCommand(job.getKey())
                   .variables(resultVariables)
                   .send()
-                  .exceptionally((throwable -> {
-                      throw new RuntimeException("Could not arrange collection", throwable);
-                  }));
+                  .join();
+
+            // Then send the message
+            sendMessage(MessageNames.COLLECTION_ARRANGED, processInstanceKey, messageVariables);
 
         } catch (Exception e) {
             client.newFailCommand(job.getKey())
@@ -1019,12 +1112,20 @@ public class Worker {
 
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
+            // Message variables
+            Map<String, Object> messageVariables = new HashMap<>();
+            messageVariables.put(ProcessVariables.FINAL_PRICE, finalPrice);
+            messageVariables.put("quoteSent", true);
+            messageVariables.put("quoteTimestamp", System.currentTimeMillis());
+
+            // Complete the job first
             client.newCompleteCommand(job.getKey())
                   .variables(resultVariables)
                   .send()
-                  .exceptionally((throwable -> {
-                      throw new RuntimeException("Could not send final quote", throwable);
-                  }));
+                  .join();
+
+            // Then send the message
+            sendMessage(MessageNames.QUOTE_NOTIFICATION, processInstanceKey, messageVariables);
 
         } catch (Exception e) {
             client.newFailCommand(job.getKey())
@@ -1082,12 +1183,20 @@ public class Worker {
 
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
+            // Message variables
+            Map<String, Object> messageVariables = new HashMap<>();
+            messageVariables.put("workComplete", true);
+            messageVariables.put("completionTimestamp", System.currentTimeMillis());
+            messageVariables.put("vehicleDetails", vehicleMake + " " + vehicleModel);
+
+            // Complete the job first
             client.newCompleteCommand(job.getKey())
                   .variables(resultVariables)
                   .send()
-                  .exceptionally((throwable -> {
-                      throw new RuntimeException("Could not notify work completion", throwable);
-                  }));
+                  .join();
+
+            // Then send the message
+            sendMessage(MessageNames.WORKS_COMPLETE, processInstanceKey, messageVariables);
 
         } catch (Exception e) {
             client.newFailCommand(job.getKey())

@@ -352,17 +352,17 @@
   </bpmn:message>
   <bpmn:message id="Message_1t3qq3b" name="Message_1t3qq3b">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=TowingRequest" />
+      <zeebe:subscription correlationKey="=processInstanceKey" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_22sbikg" name="Message_22sbikg">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=Approval" />
+      <zeebe:subscription correlationKey="=processInstanceKey" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_0dtlj6j" name="Message_0dtlj6j">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=WorksComplete" />
+      <zeebe:subscription correlationKey="=processInstanceKey" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
