@@ -331,7 +331,10 @@
       <bpmn:outgoing>Flow_067o8ra</bpmn:outgoing>
     </bpmn:manualTask>
     <bpmn:sequenceFlow id="Flow_0hveqlx" sourceRef="Activity_1vetocd" targetRef="Activity_0gemlqi" />
-    <bpmn:receiveTask id="Activity_1vetocd" name="Recieve initial costs &#10;">
+    <bpmn:receiveTask id="Activity_1vetocd" name="Receive initial costs" messageRef="Message_2f796gc">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="receiveTask" />
+      </bpmn:extensionElements>
       <bpmn:incoming>Flow_07ay6cp</bpmn:incoming>
       <bpmn:outgoing>Flow_0hveqlx</bpmn:outgoing>
     </bpmn:receiveTask>
@@ -344,7 +347,7 @@
   <bpmn:message id="Message_2e2qdo7" name="Message_2e2qdo7" />
   <bpmn:message id="Message_2f796gc" name="Message_2f796gc">
     <bpmn:extensionElements>
-      <zeebe:subscription correlationKey="=InitialCost&#10;" />
+      <zeebe:subscription correlationKey="=processInstanceKey" />
     </bpmn:extensionElements>
   </bpmn:message>
   <bpmn:message id="Message_1t3qq3b" name="Message_1t3qq3b">
@@ -460,10 +463,6 @@
       <bpmndi:BPMNShape id="Activity_0a7ewie_di" bpmnElement="Activity_01fxwqp">
         <dc:Bounds x="2447" y="583" width="100" height="80" />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Activity_1h4nljp_di" bpmnElement="Activity_0gemlqi">
-        <dc:Bounds x="767" y="125" width="100" height="80" />
-        <bpmndi:BPMNLabel />
-      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_1fyfapu_di" bpmnElement="Activity_1lhf4vx">
         <dc:Bounds x="1267" y="613" width="100" height="80" />
       </bpmndi:BPMNShape>
@@ -541,6 +540,10 @@
       <bpmndi:BPMNShape id="Activity_1frnvlq_di" bpmnElement="Activity_1f1y01m">
         <dc:Bounds x="597" y="363" width="100" height="80" />
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1h4nljp_di" bpmnElement="Activity_0gemlqi">
+        <dc:Bounds x="767" y="125" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_1fahkab_di" bpmnElement="Activity_1vetocd">
         <dc:Bounds x="597" y="125" width="100" height="80" />
       </bpmndi:BPMNShape>
@@ -571,10 +574,6 @@
       <bpmndi:BPMNEdge id="Flow_07ay6cp_di" bpmnElement="Flow_07ay6cp">
         <di:waypoint x="647" y="363" />
         <di:waypoint x="647" y="205" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_0hveqlx_di" bpmnElement="Flow_0hveqlx">
-        <di:waypoint x="697" y="165" />
-        <di:waypoint x="767" y="165" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_0itomdy_di" bpmnElement="Flow_0itomdy">
         <di:waypoint x="2697" y="165" />
@@ -740,6 +739,10 @@
         <bpmndi:BPMNLabel>
           <dc:Bounds x="2421" y="605" width="18" height="27" />
         </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0hveqlx_di" bpmnElement="Flow_0hveqlx">
+        <di:waypoint x="697" y="165" />
+        <di:waypoint x="767" y="165" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
