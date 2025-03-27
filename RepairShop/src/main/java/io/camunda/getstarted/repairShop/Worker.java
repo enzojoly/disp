@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.camunda.getstarted.repairShop.service.CalendlyService;
+import io.camunda.zeebe.client.ZeebeClient;
 import io.camunda.zeebe.client.api.response.ActivatedJob;
 import io.camunda.zeebe.client.api.worker.JobClient;
 import io.camunda.zeebe.spring.client.EnableZeebeClient;
@@ -24,8 +25,150 @@ public class Worker {
     @Autowired
     private CalendlyService calendlyService;
 
+    @Autowired
+    private ZeebeClient zeebeClient;
+
+    /**
+     * Constants for process variables to ensure consistency
+     */
+    public static class ProcessVariables {
+        // Customer info
+        public static final String CUSTOMER_NAME = "customerName";
+        public static final String CUSTOMER_EMAIL = "customerEmail";
+
+        // Vehicle info
+        public static final String VEHICLE_MAKE = "VehicleMake";
+        public static final String VEHICLE_MODEL = "VehicleModel";
+        public static final String FAULT_DESCRIPTION = "DescriptionOfFault";
+        public static final String BREAKDOWN_LOCATION = "breakdownLocation";
+
+        // Process state
+        public static final String IS_MEMBER = "isMember";
+        public static final String QUOTE_APPROVED = "QuoteApproved";
+        public static final String CUSTOMER_SATISFIED = "CustomerSatisfied";
+
+        // Cost info
+        public static final String DEPOSIT_AMOUNT = "depositAmount";
+        public static final String FINAL_PRICE = "finalPrice";
+        public static final String INITIAL_COST_RECEIVED = "initialCostReceived";
+    }
+
+    /**
+     * Constants for message names
+     */
+    public static class MessageNames {
+        public static final String RECEIVE_INITIAL_COST = "ReceiveInitialCost";
+        public static final String TOW_REQUEST = "TowingRequest";
+        public static final String APPROVAL = "Approval";
+        public static final String WORKS_COMPLETE = "WorksComplete";
+    }
+
     public static void main(String[] args) {
         SpringApplication.run(Worker.class, args);
+    }
+
+    /**
+     * Helper method to send a message to a specific process instance
+     * @param messageName The name of the message
+     * @param processInstanceKey The process instance key to correlate with
+     * @param variables The variables to include in the message
+     */
+    private void sendMessage(String messageName, String correlationKey, Map<String, Object> variables) {
+        try {
+            logger.info("Sending message '{}' with correlation key '{}'", messageName, correlationKey);
+
+            zeebeClient.newPublishMessageCommand()
+                .messageName(messageName)
+                .correlationKey(correlationKey)
+                .variables(variables)
+                .send()
+                .join();
+
+            logger.info("Message '{}' sent successfully", messageName);
+        } catch (Exception e) {
+            logger.error("Failed to send message '{}': {}", messageName, e.getMessage(), e);
+            throw new RuntimeException("Failed to send message: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Worker to inform customer of initial costs
+     */
+    @ZeebeWorker(type = "inform-customer-init-cost")
+    public void informCustomerInitialCost(final JobClient client, final ActivatedJob job) {
+        Map<String, Object> variables = job.getVariablesAsMap();
+
+        try {
+            // Log variables for debugging
+            logger.info("inform-customer-init-cost received variables: {}", variables.keySet());
+
+            // Get deposit amount
+            double deposit = ((Number) variables.getOrDefault(ProcessVariables.DEPOSIT_AMOUNT, 0.0)).doubleValue();
+
+            // Extract vehicle and customer information using helper method
+            String vehicleMake = getStringValue(variables, ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make");
+            String vehicleModel = getStringValue(variables, ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model");
+            String customerEmail = getStringValue(variables, ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email");
+            String customerName = getStringValue(variables, ProcessVariables.CUSTOMER_NAME, "CustomerName", "name");
+
+            logger.info("Informing customer {} of initial cost ${} for vehicle {} {}",
+                customerName, deposit, vehicleMake, vehicleModel);
+
+            // In a real implementation, this would send an actual notification to the customer
+            // For demo, we'll just log it
+
+            // Prepare variables that need to be passed forward
+            HashMap<String, Object> resultVariables = new HashMap<>();
+            resultVariables.put("initialCostNotified", true);
+            resultVariables.put("initialCostTimestamp", System.currentTimeMillis());
+            resultVariables.put(ProcessVariables.VEHICLE_MAKE, vehicleMake);
+            resultVariables.put(ProcessVariables.VEHICLE_MODEL, vehicleModel);
+            resultVariables.put(ProcessVariables.CUSTOMER_NAME, customerName);
+            resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
+            resultVariables.put(ProcessVariables.DEPOSIT_AMOUNT, deposit);
+
+            // Preserve membership status
+            boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
+                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                                     Boolean.TRUE.equals(variables.get("SigningUp"));
+
+            resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
+
+            // Keep original membership fields for backward compatibility
+            if (variables.containsKey("SignedUp")) {
+                resultVariables.put("SignedUp", variables.get("SignedUp"));
+            }
+            if (variables.containsKey("SigningUp")) {
+                resultVariables.put("SigningUp", variables.get("SigningUp"));
+            }
+
+            // The process instance key is used as correlation key for the message
+            String processInstanceKey = String.valueOf(job.getProcessInstanceKey());
+
+            // Create message variables - these will be available to the receive task
+            Map<String, Object> messageVariables = new HashMap<>();
+            messageVariables.put(ProcessVariables.DEPOSIT_AMOUNT, deposit);
+            messageVariables.put("paymentTimestamp", System.currentTimeMillis());
+            messageVariables.put(ProcessVariables.INITIAL_COST_RECEIVED, true);
+
+            // Complete the job first
+            client.newCompleteCommand(job.getKey())
+                  .variables(resultVariables)
+                  .send()
+                  .join();
+
+            // Then send a message to simulate customer payment (for demo purposes)
+            // In a real implementation, this would be triggered by an actual payment event
+            logger.info("Simulating payment receipt by sending message for process instance: {}", processInstanceKey);
+            sendMessage(MessageNames.RECEIVE_INITIAL_COST, processInstanceKey, messageVariables);
+
+        } catch (Exception e) {
+            logger.error("Error in inform-customer-init-cost", e);
+            client.newFailCommand(job.getKey())
+                  .retries(job.getRetries() - 1)
+                  .errorMessage("Error informing customer of initial cost: " + e.getMessage())
+                  .send();
+        }
     }
 
     /**
@@ -40,16 +183,16 @@ public class Worker {
             logger.info("Received variables: {}", variables.keySet());
 
             // Extract vehicle information - handle all possible field names
-            String vehicleMake = getStringValue(variables, "VehicleMake", "vehicleMake", "Make");
-            String vehicleModel = getStringValue(variables, "VehicleModel", "vehicleModel", "Model");
+            String vehicleMake = getStringValue(variables, ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make");
+            String vehicleModel = getStringValue(variables, ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model");
 
             // Get fault description - try all possible variable names
             String faultDescription = getStringValue(variables,
-                    "DescriptionOfFault", "extraDetails", "faultDescription", "description");
+                    ProcessVariables.FAULT_DESCRIPTION, "extraDetails", "faultDescription", "description");
 
             // Get breakdown location - try all possible variable names
             String breakdownLocation = getStringValue(variables,
-                    "breakdownLocation", "VehicleLocation", "location");
+                    ProcessVariables.BREAKDOWN_LOCATION, "VehicleLocation", "location");
 
             // Get additional towing information - try all possible variable names
             String towInfoAdditional = getStringValue(variables,
@@ -57,7 +200,7 @@ public class Worker {
 
             // Get membership status - try all possible variable names
             // Check multiple fields for membership status
-            boolean isMember = Boolean.TRUE.equals(variables.get("isMember")) ||
+            boolean isMember = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
                               Boolean.TRUE.equals(variables.get("SignedUp"));
             boolean becomeMember = Boolean.TRUE.equals(variables.get("becomeMember")) ||
                                   Boolean.TRUE.equals(variables.get("SigningUp"));
@@ -84,15 +227,15 @@ public class Worker {
             HashMap<String, Object> resultVariables = new HashMap<>();
             resultVariables.put("towRequestProcessed", true);
             resultVariables.put("vehicleDetails", vehicleDetails);
-            resultVariables.put("VehicleMake", vehicleMake);
-            resultVariables.put("VehicleModel", vehicleModel);
-            resultVariables.put("DescriptionOfFault", faultDescription);
-            resultVariables.put("breakdownLocation", breakdownLocation);
+            resultVariables.put(ProcessVariables.VEHICLE_MAKE, vehicleMake);
+            resultVariables.put(ProcessVariables.VEHICLE_MODEL, vehicleModel);
+            resultVariables.put(ProcessVariables.FAULT_DESCRIPTION, faultDescription);
+            resultVariables.put(ProcessVariables.BREAKDOWN_LOCATION, breakdownLocation);
             resultVariables.put("towInfoAdditional", towInfoAdditional);
             resultVariables.put("towingPriority", priority);
             resultVariables.put("estimatedTowArrival", "Within 60 minutes");
             resultVariables.put("towRequestTimestamp", System.currentTimeMillis());
-            resultVariables.put("isMember", membershipStatus); // Pass final membership status
+            resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus); // Pass final membership status
 
             // Also store original field names for backward compatibility
             if (variables.containsKey("VehicleLocation")) {
@@ -145,7 +288,7 @@ public class Worker {
             logger.info("InitialCostCheck received variables: {}", variables.keySet());
 
             // Get membership status from multiple possible variables
-            boolean existingMember = Boolean.TRUE.equals(variables.get("isMember")) ||
+            boolean existingMember = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
                                    Boolean.TRUE.equals(variables.get("SignedUp"));
             boolean newMember = Boolean.TRUE.equals(variables.get("becomeMember")) ||
                               Boolean.TRUE.equals(variables.get("SigningUp"));
@@ -165,8 +308,8 @@ public class Worker {
 
             // Create output variables
             HashMap<String, Object> resultVariables = new HashMap<>();
-            resultVariables.put("depositAmount", deposit);
-            resultVariables.put("isMember", membershipStatus); // Pass along final membership status
+            resultVariables.put(ProcessVariables.DEPOSIT_AMOUNT, deposit);
+            resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus); // Pass along final membership status
 
             // Keep original membership fields for backward compatibility
             if (variables.containsKey("SignedUp")) {
@@ -177,20 +320,20 @@ public class Worker {
             }
 
             // Preserve vehicle information - try all possible field names
-            String vehicleMake = getStringValue(variables, "VehicleMake", "vehicleMake", "Make");
-            String vehicleModel = getStringValue(variables, "VehicleModel", "vehicleModel", "Model");
+            String vehicleMake = getStringValue(variables, ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make");
+            String vehicleModel = getStringValue(variables, ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model");
             String faultDescription = getStringValue(variables,
-                    "DescriptionOfFault", "extraDetails", "faultDescription", "description");
+                    ProcessVariables.FAULT_DESCRIPTION, "extraDetails", "faultDescription", "description");
             String breakdownLocation = getStringValue(variables,
-                    "breakdownLocation", "VehicleLocation", "location");
+                    ProcessVariables.BREAKDOWN_LOCATION, "VehicleLocation", "location");
             String towInfoAdditional = getStringValue(variables,
                     "towInfoAdditional", "extraInfo", "additionalInfo", "towInfo");
 
             // Store variables with consistent names
-            resultVariables.put("VehicleMake", vehicleMake);
-            resultVariables.put("VehicleModel", vehicleModel);
-            resultVariables.put("DescriptionOfFault", faultDescription);
-            resultVariables.put("breakdownLocation", breakdownLocation);
+            resultVariables.put(ProcessVariables.VEHICLE_MAKE, vehicleMake);
+            resultVariables.put(ProcessVariables.VEHICLE_MODEL, vehicleModel);
+            resultVariables.put(ProcessVariables.FAULT_DESCRIPTION, faultDescription);
+            resultVariables.put(ProcessVariables.BREAKDOWN_LOCATION, breakdownLocation);
             resultVariables.put("towInfoAdditional", towInfoAdditional);
 
             // Also preserve with original field names
@@ -207,6 +350,17 @@ public class Worker {
             // Preserve breakdown status
             if (variables.containsKey("Breakdown")) {
                 resultVariables.put("Breakdown", variables.get("Breakdown"));
+            }
+
+            // Preserve customer information
+            String customerName = getStringValue(variables, ProcessVariables.CUSTOMER_NAME, "CustomerName", "name");
+            String customerEmail = getStringValue(variables, ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email");
+
+            if (customerName != null) {
+                resultVariables.put(ProcessVariables.CUSTOMER_NAME, customerName);
+            }
+            if (customerEmail != null) {
+                resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
             }
 
             // Complete the job
@@ -246,7 +400,7 @@ public class Worker {
             double repairCost = ((Number) variables.getOrDefault("repairCost", 500.0)).doubleValue();
 
             // Check multiple fields for membership status
-            boolean membershipStatus = Boolean.TRUE.equals(variables.get("isMember")) ||
+            boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
                                      Boolean.TRUE.equals(variables.get("SignedUp")) ||
                                      Boolean.TRUE.equals(variables.get("SigningUp"));
 
@@ -261,27 +415,30 @@ public class Worker {
 
             // Output variables
             HashMap<String, Object> resultVariables = new HashMap<>();
-            resultVariables.put("finalPrice", finalPrice);
+            resultVariables.put(ProcessVariables.FINAL_PRICE, finalPrice);
             resultVariables.put("discountApplied", membershipStatus);
             resultVariables.put("discountPercentage", discountPercentage);
-            resultVariables.put("isMember", membershipStatus); // Keep consistent membership status
+            resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus); // Keep consistent membership status
 
             // Preserve vehicle information - use helper method to try multiple field names
-            String vehicleMake = getStringValue(variables, "VehicleMake", "vehicleMake", "Make");
-            String vehicleModel = getStringValue(variables, "VehicleModel", "vehicleModel", "Model");
+            String vehicleMake = getStringValue(variables, ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make");
+            String vehicleModel = getStringValue(variables, ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model");
             String faultDescription = getStringValue(variables,
-                    "DescriptionOfFault", "extraDetails", "faultDescription");
+                    ProcessVariables.FAULT_DESCRIPTION, "extraDetails", "faultDescription");
 
-            resultVariables.put("VehicleMake", vehicleMake);
-            resultVariables.put("VehicleModel", vehicleModel);
-            resultVariables.put("DescriptionOfFault", faultDescription);
+            resultVariables.put(ProcessVariables.VEHICLE_MAKE, vehicleMake);
+            resultVariables.put(ProcessVariables.VEHICLE_MODEL, vehicleModel);
+            resultVariables.put(ProcessVariables.FAULT_DESCRIPTION, faultDescription);
 
             // Preserve customer information if available
-            if (variables.containsKey("customerName")) {
-                resultVariables.put("customerName", variables.get("customerName"));
+            String customerName = getStringValue(variables, ProcessVariables.CUSTOMER_NAME, "CustomerName", "name");
+            String customerEmail = getStringValue(variables, ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email");
+
+            if (customerName != null) {
+                resultVariables.put(ProcessVariables.CUSTOMER_NAME, customerName);
             }
-            if (variables.containsKey("customerEmail")) {
-                resultVariables.put("customerEmail", variables.get("customerEmail"));
+            if (customerEmail != null) {
+                resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
             }
 
             // Complete the job
@@ -328,7 +485,7 @@ public class Worker {
 
             // Set the process variable for the gateway condition
             HashMap<String, Object> resultVariables = new HashMap<>();
-            resultVariables.put("QuoteApproved", approved);
+            resultVariables.put(ProcessVariables.QUOTE_APPROVED, approved);
 
             // Also store in original field name if it exists
             if (variables.containsKey("Approved")) {
@@ -336,21 +493,21 @@ public class Worker {
             }
 
             // Preserve important vehicle information - use helper for multiple field names
-            String vehicleMake = getStringValue(variables, "VehicleMake", "vehicleMake", "Make");
-            String vehicleModel = getStringValue(variables, "VehicleModel", "vehicleModel", "Model");
+            String vehicleMake = getStringValue(variables, ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make");
+            String vehicleModel = getStringValue(variables, ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model");
             String faultDescription = getStringValue(variables,
-                    "DescriptionOfFault", "extraDetails", "faultDescription");
+                    ProcessVariables.FAULT_DESCRIPTION, "extraDetails", "faultDescription");
 
-            resultVariables.put("VehicleMake", vehicleMake);
-            resultVariables.put("VehicleModel", vehicleModel);
-            resultVariables.put("DescriptionOfFault", faultDescription);
+            resultVariables.put(ProcessVariables.VEHICLE_MAKE, vehicleMake);
+            resultVariables.put(ProcessVariables.VEHICLE_MODEL, vehicleModel);
+            resultVariables.put(ProcessVariables.FAULT_DESCRIPTION, faultDescription);
 
             // Preserve membership status across all possible field names
-            boolean membershipStatus = Boolean.TRUE.equals(variables.get("isMember")) ||
+            boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
                                      Boolean.TRUE.equals(variables.get("SignedUp")) ||
                                      Boolean.TRUE.equals(variables.get("SigningUp"));
 
-            resultVariables.put("isMember", membershipStatus);
+            resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
             if (variables.containsKey("SignedUp")) {
                 resultVariables.put("SignedUp", membershipStatus);
@@ -360,19 +517,30 @@ public class Worker {
             }
 
             // Preserve customer information if available
-            if (variables.containsKey("customerName")) {
-                resultVariables.put("customerName", variables.get("customerName"));
+            String customerName = getStringValue(variables, ProcessVariables.CUSTOMER_NAME, "CustomerName", "name");
+            String customerEmail = getStringValue(variables, ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email");
+
+            if (customerName != null) {
+                resultVariables.put(ProcessVariables.CUSTOMER_NAME, customerName);
             }
-            if (variables.containsKey("customerEmail")) {
-                resultVariables.put("customerEmail", variables.get("customerEmail"));
+            if (customerEmail != null) {
+                resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
             }
 
+            // Send message to notify of approval (this could be used for future receive tasks)
+            String processInstanceKey = String.valueOf(job.getProcessInstanceKey());
+            Map<String, Object> messageVariables = new HashMap<>();
+            messageVariables.put(ProcessVariables.QUOTE_APPROVED, approved);
+            messageVariables.put("approvalTimestamp", System.currentTimeMillis());
+
+            // Complete the job first
             client.newCompleteCommand(job.getKey())
                   .variables(resultVariables)
                   .send()
-                  .exceptionally((throwable -> {
-                      throw new RuntimeException("Could not process approval", throwable);
-                  }));
+                  .join();
+
+            // Then send the message
+            sendMessage(MessageNames.APPROVAL, processInstanceKey, messageVariables);
 
         } catch (Exception e) {
             client.newFailCommand(job.getKey())
@@ -399,30 +567,37 @@ public class Worker {
             resultVariables.put("repairCompletionTimestamp", System.currentTimeMillis());
 
             // Preserve vehicle and customer information using helper method
-            String vehicleMake = getStringValue(variables, "VehicleMake", "vehicleMake", "Make");
-            String vehicleModel = getStringValue(variables, "VehicleModel", "vehicleModel", "Model");
-            String customerName = getStringValue(variables, "customerName", "CustomerName", "name");
-            String customerEmail = getStringValue(variables, "customerEmail", "CustomerEmail", "email");
+            String vehicleMake = getStringValue(variables, ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make");
+            String vehicleModel = getStringValue(variables, ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model");
+            String customerName = getStringValue(variables, ProcessVariables.CUSTOMER_NAME, "CustomerName", "name");
+            String customerEmail = getStringValue(variables, ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email");
 
-            resultVariables.put("VehicleMake", vehicleMake);
-            resultVariables.put("VehicleModel", vehicleModel);
-            resultVariables.put("customerName", customerName);
-            resultVariables.put("customerEmail", customerEmail);
+            resultVariables.put(ProcessVariables.VEHICLE_MAKE, vehicleMake);
+            resultVariables.put(ProcessVariables.VEHICLE_MODEL, vehicleModel);
+            resultVariables.put(ProcessVariables.CUSTOMER_NAME, customerName);
+            resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
 
             // Preserve membership status
-            boolean membershipStatus = Boolean.TRUE.equals(variables.get("isMember")) ||
+            boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
                                      Boolean.TRUE.equals(variables.get("SignedUp")) ||
                                      Boolean.TRUE.equals(variables.get("SigningUp"));
 
-            resultVariables.put("isMember", membershipStatus);
+            resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
-            // Complete the job
+            // Send message to notify of work completion (this could be used for future receive tasks)
+            String processInstanceKey = String.valueOf(job.getProcessInstanceKey());
+            Map<String, Object> messageVariables = new HashMap<>();
+            messageVariables.put("worksCompleted", true);
+            messageVariables.put("completionTimestamp", System.currentTimeMillis());
+
+            // Complete the job first
             client.newCompleteCommand(job.getKey())
                   .variables(resultVariables)
                   .send()
-                  .exceptionally((throwable -> {
-                      throw new RuntimeException("Could not process repair completion", throwable);
-                  }));
+                  .join();
+
+            // Then send the message
+            sendMessage(MessageNames.WORKS_COMPLETE, processInstanceKey, messageVariables);
 
         } catch (Exception e) {
             client.newFailCommand(job.getKey())
@@ -442,13 +617,13 @@ public class Worker {
         try {
             // Get customer information using helper method
             String customerEmail = getStringValue(variables,
-                    "customerEmail", "CustomerEmail", "email", "customer@example.com");
+                    ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email", "customer@example.com");
             String customerName = getStringValue(variables,
-                    "customerName", "CustomerName", "name", "Customer");
+                    ProcessVariables.CUSTOMER_NAME, "CustomerName", "name", "Customer");
             String vehicleMake = getStringValue(variables,
-                    "VehicleMake", "vehicleMake", "Make", "Vehicle");
+                    ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make", "Vehicle");
             String vehicleModel = getStringValue(variables,
-                    "VehicleModel", "vehicleModel", "Model", "Model");
+                    ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model", "Model");
 
             // Create a booking link
             String bookingLink = calendlyService.createBookingLink(
@@ -472,14 +647,14 @@ public class Worker {
             resultVariables.put("notificationTimestamp", System.currentTimeMillis());
 
             // Preserve key information
-            resultVariables.put("VehicleMake", vehicleMake);
-            resultVariables.put("VehicleModel", vehicleModel);
-            resultVariables.put("customerName", customerName);
-            resultVariables.put("customerEmail", customerEmail);
+            resultVariables.put(ProcessVariables.VEHICLE_MAKE, vehicleMake);
+            resultVariables.put(ProcessVariables.VEHICLE_MODEL, vehicleModel);
+            resultVariables.put(ProcessVariables.CUSTOMER_NAME, customerName);
+            resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
 
             // Preserve membership status
-            if (variables.containsKey("isMember")) {
-                resultVariables.put("isMember", variables.get("isMember"));
+            if (variables.containsKey(ProcessVariables.IS_MEMBER)) {
+                resultVariables.put(ProcessVariables.IS_MEMBER, variables.get(ProcessVariables.IS_MEMBER));
             }
 
             // Complete the task
@@ -510,13 +685,13 @@ public class Worker {
         try {
             // Get customer information using helper method
             String customerEmail = getStringValue(variables,
-                    "customerEmail", "CustomerEmail", "email", "customer@example.com");
+                    ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email", "customer@example.com");
             String customerName = getStringValue(variables,
-                    "customerName", "CustomerName", "name", "Customer");
+                    ProcessVariables.CUSTOMER_NAME, "CustomerName", "name", "Customer");
             String vehicleMake = getStringValue(variables,
-                    "VehicleMake", "vehicleMake", "Make", "Vehicle");
+                    ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make", "Vehicle");
             String vehicleModel = getStringValue(variables,
-                    "VehicleModel", "vehicleModel", "Model", "Model");
+                    ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model", "Model");
 
             // Create a booking link for vehicle pickup (no repair)
             String bookingLink = calendlyService.createBookingLink(
@@ -538,10 +713,10 @@ public class Worker {
             resultVariables.put("collectionTimesOffered", true);
 
             // Preserve vehicle and customer information
-            resultVariables.put("VehicleMake", vehicleMake);
-            resultVariables.put("VehicleModel", vehicleModel);
-            resultVariables.put("customerName", customerName);
-            resultVariables.put("customerEmail", customerEmail);
+            resultVariables.put(ProcessVariables.VEHICLE_MAKE, vehicleMake);
+            resultVariables.put(ProcessVariables.VEHICLE_MODEL, vehicleModel);
+            resultVariables.put(ProcessVariables.CUSTOMER_NAME, customerName);
+            resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
 
             // Complete the task
             client.newCompleteCommand(job.getKey())
@@ -571,13 +746,13 @@ public class Worker {
         try {
             // Get customer information using helper method
             String customerEmail = getStringValue(variables,
-                    "customerEmail", "CustomerEmail", "email", "customer@example.com");
+                    ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email", "customer@example.com");
             String customerName = getStringValue(variables,
-                    "customerName", "CustomerName", "name", "Customer");
+                    ProcessVariables.CUSTOMER_NAME, "CustomerName", "name", "Customer");
             String vehicleMake = getStringValue(variables,
-                    "VehicleMake", "vehicleMake", "Make", "Vehicle");
+                    ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make", "Vehicle");
             String vehicleModel = getStringValue(variables,
-                    "VehicleModel", "vehicleModel", "Model", "Model");
+                    ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model", "Model");
 
             // Check if we already have booking information (from a webhook)
             boolean hasBookingInfo = variables.containsKey("bookingConfirmed") &&
@@ -601,17 +776,17 @@ public class Worker {
                     customerName, bookingInfo.get("appointmentTime"), vehicleMake, vehicleModel);
 
             // Preserve vehicle and customer information
-            bookingInfo.put("VehicleMake", vehicleMake);
-            bookingInfo.put("VehicleModel", vehicleModel);
-            bookingInfo.put("customerName", customerName);
-            bookingInfo.put("customerEmail", customerEmail);
+            bookingInfo.put(ProcessVariables.VEHICLE_MAKE, vehicleMake);
+            bookingInfo.put(ProcessVariables.VEHICLE_MODEL, vehicleModel);
+            bookingInfo.put(ProcessVariables.CUSTOMER_NAME, customerName);
+            bookingInfo.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
 
             // Preserve membership status
-            boolean membershipStatus = Boolean.TRUE.equals(variables.get("isMember")) ||
+            boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
                                      Boolean.TRUE.equals(variables.get("SignedUp")) ||
                                      Boolean.TRUE.equals(variables.get("SigningUp"));
 
-            bookingInfo.put("isMember", membershipStatus);
+            bookingInfo.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
             // Complete the task with booking info
             client.newCompleteCommand(job.getKey())
@@ -655,25 +830,25 @@ public class Worker {
 
             // Set the CustomerSatisfied variable with capital C and S as requested
             HashMap<String, Object> resultVariables = new HashMap<>();
-            resultVariables.put("CustomerSatisfied", satisfied);
+            resultVariables.put(ProcessVariables.CUSTOMER_SATISFIED, satisfied);
 
             // Also set with alternate capitalization for safety
             resultVariables.put("customerSatisfied", satisfied);
 
             // Preserve vehicle and customer information
             String vehicleMake = getStringValue(variables,
-                    "VehicleMake", "vehicleMake", "Make", "Vehicle");
+                    ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make", "Vehicle");
             String vehicleModel = getStringValue(variables,
-                    "VehicleModel", "vehicleModel", "Model", "Model");
+                    ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model", "Model");
             String customerName = getStringValue(variables,
-                    "customerName", "CustomerName", "name", "Customer");
+                    ProcessVariables.CUSTOMER_NAME, "CustomerName", "name", "Customer");
             String customerEmail = getStringValue(variables,
-                    "customerEmail", "CustomerEmail", "email", "customer@example.com");
+                    ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email", "customer@example.com");
 
-            resultVariables.put("VehicleMake", vehicleMake);
-            resultVariables.put("VehicleModel", vehicleModel);
-            resultVariables.put("customerName", customerName);
-            resultVariables.put("customerEmail", customerEmail);
+            resultVariables.put(ProcessVariables.VEHICLE_MAKE, vehicleMake);
+            resultVariables.put(ProcessVariables.VEHICLE_MODEL, vehicleModel);
+            resultVariables.put(ProcessVariables.CUSTOMER_NAME, customerName);
+            resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
 
             // Complete the task
             client.newCompleteCommand(job.getKey())
@@ -703,13 +878,13 @@ public class Worker {
 
             // Extract customer info using helper method
             String customerEmail = getStringValue(variables,
-                    "customerEmail", "CustomerEmail", "email", "customer@example.com");
+                    ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email", "customer@example.com");
             String customerName = getStringValue(variables,
-                    "customerName", "CustomerName", "name", "Customer");
+                    ProcessVariables.CUSTOMER_NAME, "CustomerName", "name", "Customer");
             String vehicleMake = getStringValue(variables,
-                    "VehicleMake", "vehicleMake", "Make", "Vehicle");
+                    ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make", "Vehicle");
             String vehicleModel = getStringValue(variables,
-                    "VehicleModel", "vehicleModel", "Model", "Model");
+                    ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model", "Model");
 
             // Generate a Calendly booking link
             String bookingLink = calendlyService.createBookingLink(
@@ -726,17 +901,17 @@ public class Worker {
             HashMap<String, Object> resultVariables = new HashMap<>();
             resultVariables.put("bookingLink", bookingLink);
             resultVariables.put("notificationSent", true);
-            resultVariables.put("VehicleMake", vehicleMake);
-            resultVariables.put("VehicleModel", vehicleModel);
-            resultVariables.put("customerName", customerName);
-            resultVariables.put("customerEmail", customerEmail);
+            resultVariables.put(ProcessVariables.VEHICLE_MAKE, vehicleMake);
+            resultVariables.put(ProcessVariables.VEHICLE_MODEL, vehicleModel);
+            resultVariables.put(ProcessVariables.CUSTOMER_NAME, customerName);
+            resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
 
             // Preserve membership status
-            boolean membershipStatus = Boolean.TRUE.equals(variables.get("isMember")) ||
+            boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
                                      Boolean.TRUE.equals(variables.get("SignedUp")) ||
                                      Boolean.TRUE.equals(variables.get("SigningUp"));
 
-            resultVariables.put("isMember", membershipStatus);
+            resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
             // Complete the job
             client.newCompleteCommand(job.getKey())
@@ -761,17 +936,17 @@ public class Worker {
     public void sendFinalQuote(final JobClient client, final ActivatedJob job) {
         try {
             Map<String, Object> variables = job.getVariablesAsMap();
-            double finalPrice = ((Number) variables.getOrDefault("finalPrice", 0.0)).doubleValue();
+            double finalPrice = ((Number) variables.getOrDefault(ProcessVariables.FINAL_PRICE, 0.0)).doubleValue();
 
             // Get vehicle and customer information using helper
             String vehicleMake = getStringValue(variables,
-                    "VehicleMake", "vehicleMake", "Make", "Vehicle");
+                    ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make", "Vehicle");
             String vehicleModel = getStringValue(variables,
-                    "VehicleModel", "vehicleModel", "Model", "Model");
+                    ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model", "Model");
             String customerEmail = getStringValue(variables,
-                    "customerEmail", "CustomerEmail", "email", "customer@example.com");
+                    ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email", "customer@example.com");
             String customerName = getStringValue(variables,
-                    "customerName", "CustomerName", "name", "Customer");
+                    ProcessVariables.CUSTOMER_NAME, "CustomerName", "name", "Customer");
 
             // In a real implementation, this would send an actual notification
             System.out.println("Sending final quote to customer: " + customerName);
@@ -782,18 +957,18 @@ public class Worker {
             HashMap<String, Object> resultVariables = new HashMap<>();
             resultVariables.put("quoteSent", true);
             resultVariables.put("quoteTimestamp", System.currentTimeMillis());
-            resultVariables.put("VehicleMake", vehicleMake);
-            resultVariables.put("VehicleModel", vehicleModel);
-            resultVariables.put("customerName", customerName);
-            resultVariables.put("customerEmail", customerEmail);
-            resultVariables.put("finalPrice", finalPrice);
+            resultVariables.put(ProcessVariables.VEHICLE_MAKE, vehicleMake);
+            resultVariables.put(ProcessVariables.VEHICLE_MODEL, vehicleModel);
+            resultVariables.put(ProcessVariables.CUSTOMER_NAME, customerName);
+            resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
+            resultVariables.put(ProcessVariables.FINAL_PRICE, finalPrice);
 
             // Preserve membership status
-            boolean membershipStatus = Boolean.TRUE.equals(variables.get("isMember")) ||
+            boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
                                      Boolean.TRUE.equals(variables.get("SignedUp")) ||
                                      Boolean.TRUE.equals(variables.get("SigningUp"));
 
-            resultVariables.put("isMember", membershipStatus);
+            resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
             client.newCompleteCommand(job.getKey())
                   .variables(resultVariables)
@@ -820,9 +995,9 @@ public class Worker {
 
             // Get vehicle information using helper
             String vehicleMake = getStringValue(variables,
-                    "VehicleMake", "vehicleMake", "Make", "Vehicle");
+                    ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make", "Vehicle");
             String vehicleModel = getStringValue(variables,
-                    "VehicleModel", "vehicleModel", "Model", "Model");
+                    ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model", "Model");
 
             // In a real implementation, this would send an actual notification
             System.out.println("Notifying reception that vehicle repairs are complete");
@@ -831,28 +1006,28 @@ public class Worker {
             HashMap<String, Object> resultVariables = new HashMap<>();
             resultVariables.put("workCompleteNotificationSent", true);
             resultVariables.put("completionTimestamp", System.currentTimeMillis());
-            resultVariables.put("VehicleMake", vehicleMake);
-            resultVariables.put("VehicleModel", vehicleModel);
+            resultVariables.put(ProcessVariables.VEHICLE_MAKE, vehicleMake);
+            resultVariables.put(ProcessVariables.VEHICLE_MODEL, vehicleModel);
 
             // Preserve customer information
             String customerName = getStringValue(variables,
-                    "customerName", "CustomerName", "name", null);
+                    ProcessVariables.CUSTOMER_NAME, "CustomerName", "name", null);
             String customerEmail = getStringValue(variables,
-                    "customerEmail", "CustomerEmail", "email", null);
+                    ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email", null);
 
             if (customerName != null) {
-                resultVariables.put("customerName", customerName);
+                resultVariables.put(ProcessVariables.CUSTOMER_NAME, customerName);
             }
             if (customerEmail != null) {
-                resultVariables.put("customerEmail", customerEmail);
+                resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
             }
 
             // Preserve membership status
-            boolean membershipStatus = Boolean.TRUE.equals(variables.get("isMember")) ||
+            boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
                                      Boolean.TRUE.equals(variables.get("SignedUp")) ||
                                      Boolean.TRUE.equals(variables.get("SigningUp"));
 
-            resultVariables.put("isMember", membershipStatus);
+            resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
             client.newCompleteCommand(job.getKey())
                   .variables(resultVariables)
@@ -882,13 +1057,13 @@ public class Worker {
 
             // Get vehicle and location information using helper
             String location = getStringValue(variables,
-                    "breakdownLocation", "VehicleLocation", "location", "Unknown location");
+                    ProcessVariables.BREAKDOWN_LOCATION, "VehicleLocation", "location", "Unknown location");
             String vehicleMake = getStringValue(variables,
-                    "VehicleMake", "vehicleMake", "Make", "Unknown make");
+                    ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make", "Unknown make");
             String vehicleModel = getStringValue(variables,
-                    "VehicleModel", "vehicleModel", "Model", "Unknown model");
+                    ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model", "Unknown model");
             String faultDescription = getStringValue(variables,
-                    "DescriptionOfFault", "extraDetails", "faultDescription", "No description provided");
+                    ProcessVariables.FAULT_DESCRIPTION, "extraDetails", "faultDescription", "No description provided");
             String towInfoAdditional = getStringValue(variables,
                     "towInfoAdditional", "extraInfo", "additionalInfo", "");
 
@@ -912,11 +1087,11 @@ public class Worker {
             resultVariables.put("estimatedTowArrival", "Within 60 minutes"); // In reality, would come from tow service
 
             // Preserve all important variables
-            resultVariables.put("breakdownLocation", location);
+            resultVariables.put(ProcessVariables.BREAKDOWN_LOCATION, location);
             resultVariables.put("vehicleDetails", vehicleDetails);
-            resultVariables.put("VehicleMake", vehicleMake);
-            resultVariables.put("VehicleModel", vehicleModel);
-            resultVariables.put("DescriptionOfFault", faultDescription);
+            resultVariables.put(ProcessVariables.VEHICLE_MAKE, vehicleMake);
+            resultVariables.put(ProcessVariables.VEHICLE_MODEL, vehicleModel);
+            resultVariables.put(ProcessVariables.FAULT_DESCRIPTION, faultDescription);
             resultVariables.put("towInfoAdditional", towInfoAdditional);
 
             // Also preserve with original variable names
@@ -932,23 +1107,23 @@ public class Worker {
 
             // Preserve customer information
             String customerName = getStringValue(variables,
-                    "customerName", "CustomerName", "name", null);
+                    ProcessVariables.CUSTOMER_NAME, "CustomerName", "name", null);
             String customerEmail = getStringValue(variables,
-                    "customerEmail", "CustomerEmail", "email", null);
+                    ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email", null);
 
             if (customerName != null) {
-                resultVariables.put("customerName", customerName);
+                resultVariables.put(ProcessVariables.CUSTOMER_NAME, customerName);
             }
             if (customerEmail != null) {
-                resultVariables.put("customerEmail", customerEmail);
+                resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
             }
 
             // Preserve membership status
-            boolean membershipStatus = Boolean.TRUE.equals(variables.get("isMember")) ||
+            boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
                                      Boolean.TRUE.equals(variables.get("SignedUp")) ||
                                      Boolean.TRUE.equals(variables.get("SigningUp"));
 
-            resultVariables.put("isMember", membershipStatus);
+            resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
             // Preserve original membership fields
             if (variables.containsKey("SignedUp")) {
@@ -958,12 +1133,22 @@ public class Worker {
                 resultVariables.put("SigningUp", variables.get("SigningUp"));
             }
 
+            // Send message for the tow request (for potential future receive tasks)
+            String processInstanceKey = String.valueOf(job.getProcessInstanceKey());
+            Map<String, Object> messageVariables = new HashMap<>();
+            messageVariables.put("towRequested", true);
+            messageVariables.put("towRequestTimestamp", System.currentTimeMillis());
+            messageVariables.put("vehicleDetails", vehicleDetails);
+            messageVariables.put("breakdownLocation", location);
+
+            // Complete the job first
             client.newCompleteCommand(job.getKey())
                   .variables(resultVariables)
                   .send()
-                  .exceptionally((throwable -> {
-                      throw new RuntimeException("Could not send tow request", throwable);
-                  }));
+                  .join();
+
+            // Then send the message
+            sendMessage(MessageNames.TOW_REQUEST, processInstanceKey, messageVariables);
 
         } catch (Exception e) {
             client.newFailCommand(job.getKey())
