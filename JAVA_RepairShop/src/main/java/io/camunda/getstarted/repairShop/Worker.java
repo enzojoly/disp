@@ -573,16 +573,31 @@ public class Worker {
             // Log variables for debugging
             logger.info("process-approval received variables: {}", variables.keySet());
 
-            // Get approval value from the form data - try multiple possible field names
-            Boolean approved = null;
-            if (variables.containsKey("Approved")) {
+            // Print all variables for debugging
+            variables.forEach((key, value) -> {
+                logger.info("Variable: {} = {}", key, value);
+            });
+
+            // Get approval value from the form data - prioritize QuoteApprovalForm as specified
+            Boolean approved = false; // Default to false
+
+            // Check for QuoteApprovalForm first (new approach)
+            if (variables.containsKey("QuoteApprovalForm")) {
+                Object formValue = variables.get("QuoteApprovalForm");
+                logger.info("Found QuoteApprovalForm with value: {}", formValue);
+
+                // If the value is exactly "true" (as string), set approved to true
+                if (formValue instanceof String) {
+                    approved = "true".equals(formValue);
+                }
+            }
+            // Fall back to legacy approaches if needed
+            else if (variables.containsKey("Approved")) {
                 approved = Boolean.TRUE.equals(variables.get("Approved"));
             } else if (variables.containsKey("approved")) {
                 approved = Boolean.TRUE.equals(variables.get("approved"));
             } else if (variables.containsKey("approval")) {
                 approved = Boolean.TRUE.equals(variables.get("approval"));
-            } else {
-                approved = false; // Default to false if not found
             }
 
             logger.info("Processing customer approval: {}", approved ? "Approved" : "Denied");
