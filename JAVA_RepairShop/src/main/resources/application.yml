@@ -10,6 +10,11 @@ calendly:
   booking:
     url: https://calendly.com/business-enzojoly/30min
 
+stripe:
+  api:
+    key: ${STRIPE_SECRET_KEY:}
+    publishable-key: ${STRIPE_PUBLISHABLE_KEY:pk_test_51R7oYvGdUZ9m46wApAnk6ZnLwXCclARbePEZhOzGQzoGY8dNIglDL9EHe6SM2OzzX3QDh8En1w5k1APRkp6jwZOS00gey9yX9O}
+
 # Create your API key via https://api-ninjas.com/profile
 api-ninjas:
   key: 0lrEuA80z4oFM14SD5bYnQ==z2wFXsZKrsJ4R4FR
