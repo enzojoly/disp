@@ -13,9 +13,15 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
+import org.apache.http.NameValuePair;
+import org.apache.http.message.BasicNameValuePair;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Iterator;
 
 @Service
 public class StripeInvoiceService {
@@ -153,6 +159,7 @@ public class StripeInvoiceService {
         invoiceData.put("customer", customerId);
         invoiceData.put("auto_advance", true); // Automatically finalize and send the invoice
         invoiceData.put("collection_method", "send_invoice"); // Ensure it's set to send the invoice
+        invoiceData.put("days_until_due", 0); // Payment due immediately on the same day
 
         // Call Stripe API to create invoice
         String responseBody = callStripeApi("/invoices", invoiceData);
@@ -186,13 +193,20 @@ public class StripeInvoiceService {
 
             // Set headers
             request.setHeader("Authorization", "Bearer " + apiKey);
-            request.setHeader("Content-Type", "application/json");
+            request.setHeader("Content-Type", "application/x-www-form-urlencoded");
 
-            // Set request body
-            String jsonBody = objectMapper.writeValueAsString(data);
-            request.setEntity(new StringEntity(jsonBody));
+            // Convert ObjectNode to form parameters
+            List<NameValuePair> params = new ArrayList<>();
+            Iterator<Map.Entry<String, com.fasterxml.jackson.databind.JsonNode>> fields = data.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, com.fasterxml.jackson.databind.JsonNode> entry = fields.next();
+                params.add(new BasicNameValuePair(entry.getKey(), entry.getValue().asText()));
+            }
 
-            logger.debug("Calling Stripe API: {} with data: {}", endpoint, jsonBody);
+            // Set request body as URL-encoded form parameters
+            request.setEntity(new UrlEncodedFormEntity(params));
+
+            logger.debug("Calling Stripe API: {} with data: {}", endpoint, params);
 
             // Execute request
             try (CloseableHttpResponse response = httpClient.execute(request)) {

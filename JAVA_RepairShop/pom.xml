@@ -66,11 +66,6 @@ xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/ma
 <artifactId>jackson-annotations</artifactId>
 <version>2.16.1</version>
 </dependency>
-<dependency>
-<groupId>com.fasterxml.jackson.dataformat</groupId>
-<artifactId>jackson-dataformat-yaml</artifactId>
-<version>2.16.1</version>
-</dependency>
 </dependencies>
 
 <build>
