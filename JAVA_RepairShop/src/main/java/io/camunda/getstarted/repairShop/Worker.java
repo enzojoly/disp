@@ -1,5 +1,6 @@
 package io.camunda.getstarted.repairShop;
 
+import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -16,6 +17,7 @@ import io.camunda.zeebe.client.api.response.ActivatedJob;
 import io.camunda.zeebe.client.api.worker.JobClient;
 import io.camunda.zeebe.spring.client.EnableZeebeClient;
 import io.camunda.zeebe.spring.client.annotation.ZeebeWorker;
+import io.github.cdimascio.dotenv.Dotenv;
 
 @SpringBootApplication
 @EnableZeebeClient
@@ -78,6 +80,38 @@ public class Worker {
     }
 
     public static void main(String[] args) {
+        // This explicitly loads the DotenvConfig class before Spring Boot starts
+        try {
+            File dotenvFile = new File(".env");
+            if (dotenvFile.exists()) {
+                logger.info("Found .env file. Loading environment variables");
+
+                // Load variables from .env file using the dotenv library
+                Dotenv dotenv = Dotenv.configure().load();
+
+                // Manually set system properties from .env
+                if (dotenv.get("STRIPE_SECRET_KEY") != null) {
+                    System.setProperty("STRIPE_SECRET_KEY", dotenv.get("STRIPE_SECRET_KEY"));
+                    logger.info("Set STRIPE_SECRET_KEY from .env file");
+                }
+
+                if (dotenv.get("STRIPE_PUBLISHABLE_KEY") != null) {
+                    System.setProperty("STRIPE_PUBLISHABLE_KEY", dotenv.get("STRIPE_PUBLISHABLE_KEY"));
+                    logger.info("Set STRIPE_PUBLISHABLE_KEY from .env file");
+                }
+
+                if (dotenv.get("STRIPE_USE_TEST_MODE") != null) {
+                    System.setProperty("STRIPE_USE_TEST_MODE", dotenv.get("STRIPE_USE_TEST_MODE"));
+                    logger.info("Set STRIPE_USE_TEST_MODE from .env file");
+                }
+            } else {
+                logger.warn(".env file not found. Will use system environment variables if available");
+            }
+        } catch (Exception e) {
+            logger.error("Error loading .env file", e);
+        }
+
+        // Start the Spring Boot application
         SpringApplication.run(Worker.class, args);
     }
 
