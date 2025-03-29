@@ -65,7 +65,7 @@ public class StripeInvoiceService {
             // Then create an invoice item
             String invoiceItemId = createInvoiceItem(customerId, description, vehicleDetails, amount);
 
-            // Finally create and finalize the invoice
+            // Finally create and finalise the invoice, Stripe automatically includes all pending invoice items for this customer
             Map<String, Object> invoiceData = createAndFinalizeInvoice(customerId);
 
             logger.info("Successfully created Stripe invoice with ID: {}", invoiceData.get("id"));
@@ -143,11 +143,27 @@ public class StripeInvoiceService {
         ObjectNode itemData = objectMapper.createObjectNode();
         itemData.put("customer", customerId);
         itemData.put("description", fullDescription);
-        itemData.put("amount", Math.round(amount * 100)); // Stripe uses cents
+
+        // Debug log before conversion
+        logger.info("Amount before conversion: {}", amount);
+
+        // Convert to cents/pence (Stripe's smallest unit)
+        long amountInSmallestUnit = Math.round(amount * 100);
+
+        // Debug log after conversion
+        logger.info("Amount after conversion to smallest unit: {}", amountInSmallestUnit);
+
+        itemData.put("amount", amountInSmallestUnit);
         itemData.put("currency", currency.toLowerCase());
+
+        // Debug log the complete item data
+        logger.info("Invoice item data being sent to Stripe: {}", itemData.toString());
 
         // Call Stripe API to create invoice item
         String responseBody = callStripeApi("/invoiceitems", itemData);
+
+        // Debug log the response
+        logger.info("Stripe invoice item response: {}", responseBody);
 
         // Use TypeReference to avoid unchecked conversion warning
         Map<String, Object> response = objectMapper.readValue(responseBody,
@@ -163,27 +179,42 @@ public class StripeInvoiceService {
         // Prepare invoice data
         ObjectNode invoiceData = objectMapper.createObjectNode();
         invoiceData.put("customer", customerId);
-        invoiceData.put("auto_advance", true); // Automatically finalize and send the invoice
-        invoiceData.put("collection_method", "send_invoice"); // Ensure it's set to send the invoice
-        invoiceData.put("days_until_due", 0); // Payment due immediately on the same day
+
+        // Make sure the invoice is automatically finalized
+        invoiceData.put("auto_advance", true);
+
+        // Set the collection method to send_invoice (manual payment)
+        invoiceData.put("collection_method", "send_invoice");
+
+        // Due immediately
+        invoiceData.put("days_until_due", 0);
 
         // Call Stripe API to create invoice
         String responseBody = callStripeApi("/invoices", invoiceData);
 
-        // Use TypeReference to avoid unchecked conversion warning
-        Map<String, Object> invoice = objectMapper.readValue(responseBody, new TypeReference<Map<String, Object>>() {});
+        // Parse the response
+        Map<String, Object> invoice = objectMapper.readValue(responseBody,
+                                     new TypeReference<Map<String, Object>>() {});
 
-        // Explicitly send the invoice (this ensures the email is sent when not in test mode)
+        // Get the invoice ID
         String invoiceId = (String) invoice.get("id");
+
         if (invoiceId != null) {
+            // Finalize the invoice explicitly
+            ObjectNode finalizeData = objectMapper.createObjectNode();
+            String finalizeResponseBody = callStripeApi("/invoices/" + invoiceId + "/finalize", finalizeData);
+            invoice = objectMapper.readValue(finalizeResponseBody,
+                                        new TypeReference<Map<String, Object>>() {});
+
+            // Now send the invoice via email
             try {
-                String sendResponseBody = callStripeApi("/invoices/" + invoiceId + "/send", objectMapper.createObjectNode());
-                // Update our invoice object with the latest data
-                invoice = objectMapper.readValue(sendResponseBody, new TypeReference<Map<String, Object>>() {});
+                ObjectNode sendData = objectMapper.createObjectNode();
+                String sendResponseBody = callStripeApi("/invoices/" + invoiceId + "/send", sendData);
+                invoice = objectMapper.readValue(sendResponseBody,
+                                            new TypeReference<Map<String, Object>>() {});
                 logger.info("Invoice email sent successfully to customer");
             } catch (Exception e) {
-                // Log but don't fail the process if sending fails
-                logger.warn("Failed to explicitly send invoice email: {}", e.getMessage());
+                logger.warn("Failed to send invoice email: {}", e.getMessage());
             }
         }
 
@@ -212,14 +243,20 @@ public class StripeInvoiceService {
             // Set request body as URL-encoded form parameters
             request.setEntity(new UrlEncodedFormEntity(params));
 
-            logger.debug("Calling Stripe API: {} with data: {}", endpoint, params);
+            // Improved detailed logging
+            StringBuilder paramsLog = new StringBuilder();
+            for (NameValuePair param : params) {
+                paramsLog.append(param.getName()).append("=").append(param.getValue()).append(", ");
+            }
+            logger.info("Calling Stripe API: {} with data: {}", endpoint, paramsLog.toString());
 
             // Execute request
             try (CloseableHttpResponse response = httpClient.execute(request)) {
                 int statusCode = response.getStatusLine().getStatusCode();
                 String responseBody = EntityUtils.toString(response.getEntity());
 
-                logger.debug("Stripe API response ({}): {}", statusCode, responseBody);
+                logger.info("Stripe API response status: {}", statusCode);
+                logger.info("Stripe API response body: {}", responseBody);
 
                 if (statusCode >= 200 && statusCode < 300) {
                     return responseBody;
