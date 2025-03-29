@@ -123,7 +123,7 @@ public class Worker {
             // Ensure we have a valid positive amount
             if (finalPrice < 0.01 && repairCost > 0) {
                 finalPrice = repairCost;
-                logger.info("Using repair cost as final price: ${}", String.format("%.2f", finalPrice));
+                logger.info("Using repair cost as final price: £{}", String.format("%.2f", finalPrice));
             }
 
             // Set TotalPrice to be the same as finalPrice
@@ -153,13 +153,14 @@ public class Worker {
 
             logger.info("Generating invoice for customer: {}", customerName);
             logger.info("Vehicle: {}", vehicleDetails);
-            logger.info("Amount: ${}", formattedPrice);
+            logger.info("Amount: £{}", formattedPrice);
 
             // Call the Stripe service to generate the actual invoice
             Map<String, Object> invoiceResult;
 
-            // Use test or production mode based on configuration
-            boolean useTestMode = true; // This could be a configuration option
+            // Use test mode setting from the service (comes from configuration)
+            boolean useTestMode = stripeInvoiceService.isUsingTestMode();
+            logger.info("Using Stripe in {} mode", useTestMode ? "TEST" : "PRODUCTION");
 
             if (useTestMode) {
                 invoiceResult = stripeInvoiceService.createTestInvoice(
@@ -263,7 +264,7 @@ public class Worker {
             String customerEmail = getStringValue(variables, ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email");
             String customerName = getStringValue(variables, ProcessVariables.CUSTOMER_NAME, "CustomerName", "name");
 
-            logger.info("Informing customer {} of initial cost ${} for vehicle {} {}",
+            logger.info("Informing customer {} of initial cost £{} for vehicle {} {}",
                 customerName, String.format("%.2f", deposit), vehicleMake, vehicleModel);
 
             // In a real implementation, this would send an actual notification to the customer
@@ -343,7 +344,7 @@ public class Worker {
             String faultDescription = getStringValue(variables,
                     ProcessVariables.FAULT_DESCRIPTION, "extraDetails", "faultDescription");
 
-            logger.info("Notifying reception of repair costs for {} {}: ${}",
+            logger.info("Notifying reception of repair costs for {} {}: £{}",
                     vehicleMake, vehicleModel, String.format("%.2f", repairCost));
             logger.info("Fault description: {}", faultDescription);
 
@@ -1356,7 +1357,7 @@ public class Worker {
             logger.info("Sending final quote to customer: {}", customerName);
             logger.info("Customer email: {}", customerEmail);
             logger.info("Vehicle: {} {}", vehicleMake, vehicleModel);
-            logger.info("Final price: ${}", formattedPrice);
+            logger.info("Final price: £{}", formattedPrice);
 
             // Get the process instance key for message correlation
             String processInstanceKey = String.valueOf(job.getProcessInstanceKey());

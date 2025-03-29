@@ -23,11 +23,14 @@ public class StripeInvoiceService {
     private static final Logger logger = LoggerFactory.getLogger(StripeInvoiceService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Value("${stripe.api.key:sk_test_51PHdLyOaZhyIHD7IRIxdxcaKWW31qgMoXP9ey2vfjnvWl6UNH9gHLNJLLDUQPxcBIRWzjcFDfhgCkHF7WN1ZjrEk00ZPK1VcPo}")
+    @Value("${stripe.api.key:}")
     private String apiKey;
 
     @Value("${stripe.api.url:https://api.stripe.com/v1}")
     private String apiUrl;
+
+    @Value("${stripe.use.test.mode:false}")
+    private boolean useTestMode;
 
     /**
      * Creates a Stripe invoice for a customer
@@ -43,6 +46,7 @@ public class StripeInvoiceService {
                                               double amount) {
         logger.info("Generating Stripe invoice for customer: {}", customerName);
         logger.info("Invoice amount: ${}", String.format("%.2f", amount));
+        logger.info("Using Stripe API in {} mode", useTestMode ? "TEST" : "PRODUCTION");
 
         try {
             // In a real implementation, we would first create or retrieve the customer
@@ -148,12 +152,29 @@ public class StripeInvoiceService {
         ObjectNode invoiceData = objectMapper.createObjectNode();
         invoiceData.put("customer", customerId);
         invoiceData.put("auto_advance", true); // Automatically finalize and send the invoice
+        invoiceData.put("collection_method", "send_invoice"); // Ensure it's set to send the invoice
 
         // Call Stripe API to create invoice
         String responseBody = callStripeApi("/invoices", invoiceData);
 
         // Use TypeReference to avoid unchecked conversion warning
-        return objectMapper.readValue(responseBody, new TypeReference<Map<String, Object>>() {});
+        Map<String, Object> invoice = objectMapper.readValue(responseBody, new TypeReference<Map<String, Object>>() {});
+
+        // Explicitly send the invoice (this ensures the email is sent when not in test mode)
+        String invoiceId = (String) invoice.get("id");
+        if (invoiceId != null) {
+            try {
+                String sendResponseBody = callStripeApi("/invoices/" + invoiceId + "/send", objectMapper.createObjectNode());
+                // Update our invoice object with the latest data
+                invoice = objectMapper.readValue(sendResponseBody, new TypeReference<Map<String, Object>>() {});
+                logger.info("Invoice email sent successfully to customer");
+            } catch (Exception e) {
+                // Log but don't fail the process if sending fails
+                logger.warn("Failed to explicitly send invoice email: {}", e.getMessage());
+            }
+        }
+
+        return invoice;
     }
 
     /**
@@ -231,5 +252,13 @@ public class StripeInvoiceService {
             sb.append(chars.charAt(index));
         }
         return sb.toString();
+    }
+
+    /**
+     * Check if we are operating in test mode
+     * @return true if using test mode, false if production mode
+     */
+    public boolean isUsingTestMode() {
+        return useTestMode;
     }
 }

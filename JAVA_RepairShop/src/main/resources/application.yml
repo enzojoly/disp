@@ -14,6 +14,10 @@ stripe:
   api:
     key: ${STRIPE_SECRET_KEY:}
     publishable-key: ${STRIPE_PUBLISHABLE_KEY:}
+    url: https://api.stripe.com/v1
+  use:
+    test:
+      mode: ${STRIPE_USE_TEST_MODE:false}
 
 # Create your API key via https://api-ninjas.com/profile
 api-ninjas:
