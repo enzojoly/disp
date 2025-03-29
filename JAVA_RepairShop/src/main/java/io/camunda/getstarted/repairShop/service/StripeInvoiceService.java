@@ -162,8 +162,10 @@ public class StripeInvoiceService {
         // Debug log after conversion
         logger.info("Amount after conversion to smallest unit: {}", amountInSmallestUnit);
 
+        // Only set the amount parameter (not quantity, as they're mutually exclusive)
         itemData.put("amount", amountInSmallestUnit);
         itemData.put("currency", currency.toLowerCase());
+        // Don't use quantity parameter as it can't be used with amount
 
         // Debug log the complete item data
         logger.info("Invoice item data being sent to Stripe: {}", itemData.toString());
@@ -178,6 +180,15 @@ public class StripeInvoiceService {
         Map<String, Object> response = objectMapper.readValue(responseBody,
                                         new TypeReference<Map<String, Object>>() {});
 
+        // Check if amount field exists in response for verification
+        Number itemAmount = null;
+        if (response.containsKey("amount")) {
+            itemAmount = (Number) response.get("amount");
+            logger.info("Created invoice item with amount: {}", itemAmount);
+        } else {
+            logger.warn("Invoice item response does not contain amount field");
+        }
+
         return (String) response.get("id");
     }
 
@@ -190,8 +201,13 @@ public class StripeInvoiceService {
         invoiceData.put("customer", customerId);
         invoiceData.put("collection_method", "send_invoice");
         invoiceData.put("days_until_due", 0);
-        invoiceData.put("auto_advance", true);
-        invoiceData.put("footer", ""); // Use default branding
+
+        // Set auto_advance to false to prevent Stripe from auto-finalizing
+        // so we can explicitly call finalize afterward
+        invoiceData.put("auto_advance", false);
+
+        // Add pending invoice items from this customer
+        invoiceData.put("pending_invoice_items_behavior", "include");
 
         logger.info("Creating invoice for customer: {}", customerId);
 
@@ -208,6 +224,14 @@ public class StripeInvoiceService {
         String invoiceId = (String) invoice.get("id");
         logger.info("Created invoice with ID: {}", invoiceId);
 
+        // Check if the invoice has a positive amount due
+        Number amountDue = (Number) invoice.get("amount_due");
+        if (amountDue != null) {
+            logger.info("Invoice initial amount_due: {}", amountDue);
+        } else {
+            logger.warn("Invoice amount_due is null, this might cause a zero-amount invoice");
+        }
+
         if (invoiceId != null) {
             // Finalize the invoice explicitly
             ObjectNode finalizeData = objectMapper.createObjectNode();
@@ -218,6 +242,11 @@ public class StripeInvoiceService {
 
             invoice = objectMapper.readValue(finalizeResponseBody,
                                         new TypeReference<Map<String, Object>>() {});
+
+            // Check amount due after finalization
+            amountDue = (Number) invoice.get("amount_due");
+            logger.info("Invoice amount_due after finalization: {}", amountDue);
+
             logger.info("Finalized invoice with ID: {}", invoiceId);
 
             // Now send the invoice via email
