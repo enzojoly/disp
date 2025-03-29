@@ -59,25 +59,19 @@ public class StripeInvoiceService {
         logger.info("Using Stripe API in {} mode", useTestMode ? "TEST" : "PRODUCTION");
 
         try {
-            // In a real implementation, we would first create or retrieve the customer
-            String customerId = createOrRetrieveCustomer(customerEmail, customerName);
+            // Create a new Stripe invoice directly with the line item included
+            Map<String, Object> invoiceData = createDirectInvoice(customerEmail, customerName, description, vehicleDetails, amount);
 
-            // Then create an invoice item
-            String invoiceItemId = createInvoiceItem(customerId, description, vehicleDetails, amount);
-
-            // Finally create and finalise the invoice, Stripe automatically includes all pending invoice items for this customer
-            Map<String, Object> invoiceData = createAndFinalizeInvoice(customerId);
-
-            logger.info("Successfully created Stripe invoice with ID: {}", invoiceData.get("id"));
+            String invoiceId = (String) invoiceData.get("id");
+            logger.info("Successfully created Stripe invoice with ID: {}", invoiceId);
 
             // Create a structured response
             Map<String, Object> result = new HashMap<>();
-            result.put("invoiceId", invoiceData.get("id"));
+            result.put("invoiceId", invoiceId);
             result.put("amount", amount);
             result.put("formattedAmount", String.format("%.2f", amount));
             result.put("customerEmail", customerEmail);
             result.put("customerName", customerName);
-            result.put("customerId", customerId);
             result.put("description", description);
             result.put("vehicleDetails", vehicleDetails);
             result.put("invoiceUrl", invoiceData.get("hosted_invoice_url"));
@@ -111,6 +105,80 @@ public class StripeInvoiceService {
     }
 
     /**
+     * Create a complete invoice in one call, with the line item included
+     */
+    private Map<String, Object> createDirectInvoice(String customerEmail, String customerName,
+                                                   String description, String vehicleDetails,
+                                                   double amount) throws Exception {
+        // Step 1: Create the customer or get existing one
+        String customerId = createOrRetrieveCustomer(customerEmail, customerName);
+
+        // Step 2: Create an invoice that includes the line item directly
+        // Add vehicle details to description if available
+        String fullDescription = description;
+        if (vehicleDetails != null && !vehicleDetails.isEmpty()) {
+            fullDescription += " - " + vehicleDetails;
+        }
+
+        // Convert amount to smallest currency unit (cents/pence)
+        long amountInSmallestUnit = Math.round(amount * 100);
+
+        // Prepare the invoice data with line items included
+        ObjectNode invoiceData = objectMapper.createObjectNode();
+        invoiceData.put("customer", customerId);
+        invoiceData.put("collection_method", "send_invoice");
+        invoiceData.put("days_until_due", 0);
+        invoiceData.put("auto_advance", true);
+
+        // Add the footer parameter to ensure branding is applied
+        // This ensures the default footer (with logo) is used
+        invoiceData.put("footer", "");
+
+        // Add the line item directly to the invoice creation
+        ObjectNode lineItems = objectMapper.createObjectNode();
+        lineItems.put("price_data[currency]", currency.toLowerCase());
+        lineItems.put("price_data[product_data][name]", fullDescription);
+        lineItems.put("price_data[unit_amount]", amountInSmallestUnit);
+        lineItems.put("quantity", 1);
+
+        // Merge the invoice data and line items
+        Iterator<Map.Entry<String, com.fasterxml.jackson.databind.JsonNode>> fields = lineItems.fields();
+        while (fields.hasNext()) {
+            Map.Entry<String, com.fasterxml.jackson.databind.JsonNode> entry = fields.next();
+            invoiceData.put("items[0][" + entry.getKey() + "]", entry.getValue().asText());
+        }
+
+        // Create the invoice with line items included
+        String responseBody = callStripeApi("/invoices", invoiceData);
+        Map<String, Object> invoice = objectMapper.readValue(responseBody,
+                                      new TypeReference<Map<String, Object>>() {});
+
+        // Get the invoice ID
+        String invoiceId = (String) invoice.get("id");
+
+        if (invoiceId != null) {
+            // Finalize the invoice
+            ObjectNode finalizeData = objectMapper.createObjectNode();
+            String finalizeResponseBody = callStripeApi("/invoices/" + invoiceId + "/finalize", finalizeData);
+            invoice = objectMapper.readValue(finalizeResponseBody,
+                                       new TypeReference<Map<String, Object>>() {});
+
+            // Send the invoice via email
+            try {
+                ObjectNode sendData = objectMapper.createObjectNode();
+                String sendResponseBody = callStripeApi("/invoices/" + invoiceId + "/send", sendData);
+                invoice = objectMapper.readValue(sendResponseBody,
+                                            new TypeReference<Map<String, Object>>() {});
+                logger.info("Invoice email sent successfully to customer");
+            } catch (Exception e) {
+                logger.warn("Failed to send invoice email: {}", e.getMessage());
+            }
+        }
+
+        return invoice;
+    }
+
+    /**
      * Create or retrieve a Stripe customer
      */
     private String createOrRetrieveCustomer(String email, String name) throws Exception {
@@ -127,98 +195,6 @@ public class StripeInvoiceService {
                                         new TypeReference<Map<String, Object>>() {});
 
         return (String) response.get("id");
-    }
-
-    /**
-     * Create an invoice item for the customer
-     */
-    private String createInvoiceItem(String customerId, String description, String vehicleDetails, double amount) throws Exception {
-        // Add vehicle details to description if available
-        String fullDescription = description;
-        if (vehicleDetails != null && !vehicleDetails.isEmpty()) {
-            fullDescription += " - " + vehicleDetails;
-        }
-
-        // Prepare invoice item data
-        ObjectNode itemData = objectMapper.createObjectNode();
-        itemData.put("customer", customerId);
-        itemData.put("description", fullDescription);
-
-        // Debug log before conversion
-        logger.info("Amount before conversion: {}", amount);
-
-        // Convert to cents/pence (Stripe's smallest unit)
-        long amountInSmallestUnit = Math.round(amount * 100);
-
-        // Debug log after conversion
-        logger.info("Amount after conversion to smallest unit: {}", amountInSmallestUnit);
-
-        itemData.put("amount", amountInSmallestUnit);
-        itemData.put("currency", currency.toLowerCase());
-
-        // Debug log the complete item data
-        logger.info("Invoice item data being sent to Stripe: {}", itemData.toString());
-
-        // Call Stripe API to create invoice item
-        String responseBody = callStripeApi("/invoiceitems", itemData);
-
-        // Debug log the response
-        logger.info("Stripe invoice item response: {}", responseBody);
-
-        // Use TypeReference to avoid unchecked conversion warning
-        Map<String, Object> response = objectMapper.readValue(responseBody,
-                                        new TypeReference<Map<String, Object>>() {});
-
-        return (String) response.get("id");
-    }
-
-    /**
-     * Create and finalize an invoice for the customer
-     */
-    private Map<String, Object> createAndFinalizeInvoice(String customerId) throws Exception {
-        // Prepare invoice data
-        ObjectNode invoiceData = objectMapper.createObjectNode();
-        invoiceData.put("customer", customerId);
-
-        // Make sure the invoice is automatically finalized
-        invoiceData.put("auto_advance", true);
-
-        // Set the collection method to send_invoice (manual payment)
-        invoiceData.put("collection_method", "send_invoice");
-
-        // Due immediately
-        invoiceData.put("days_until_due", 0);
-
-        // Call Stripe API to create invoice
-        String responseBody = callStripeApi("/invoices", invoiceData);
-
-        // Parse the response
-        Map<String, Object> invoice = objectMapper.readValue(responseBody,
-                                     new TypeReference<Map<String, Object>>() {});
-
-        // Get the invoice ID
-        String invoiceId = (String) invoice.get("id");
-
-        if (invoiceId != null) {
-            // Finalize the invoice explicitly
-            ObjectNode finalizeData = objectMapper.createObjectNode();
-            String finalizeResponseBody = callStripeApi("/invoices/" + invoiceId + "/finalize", finalizeData);
-            invoice = objectMapper.readValue(finalizeResponseBody,
-                                        new TypeReference<Map<String, Object>>() {});
-
-            // Now send the invoice via email
-            try {
-                ObjectNode sendData = objectMapper.createObjectNode();
-                String sendResponseBody = callStripeApi("/invoices/" + invoiceId + "/send", sendData);
-                invoice = objectMapper.readValue(sendResponseBody,
-                                            new TypeReference<Map<String, Object>>() {});
-                logger.info("Invoice email sent successfully to customer");
-            } catch (Exception e) {
-                logger.warn("Failed to send invoice email: {}", e.getMessage());
-            }
-        }
-
-        return invoice;
     }
 
     /**
@@ -243,20 +219,10 @@ public class StripeInvoiceService {
             // Set request body as URL-encoded form parameters
             request.setEntity(new UrlEncodedFormEntity(params));
 
-            // Improved detailed logging
-            StringBuilder paramsLog = new StringBuilder();
-            for (NameValuePair param : params) {
-                paramsLog.append(param.getName()).append("=").append(param.getValue()).append(", ");
-            }
-            logger.info("Calling Stripe API: {} with data: {}", endpoint, paramsLog.toString());
-
             // Execute request
             try (CloseableHttpResponse response = httpClient.execute(request)) {
                 int statusCode = response.getStatusLine().getStatusCode();
                 String responseBody = EntityUtils.toString(response.getEntity());
-
-                logger.info("Stripe API response status: {}", statusCode);
-                logger.info("Stripe API response body: {}", responseBody);
 
                 if (statusCode >= 200 && statusCode < 300) {
                     return responseBody;
