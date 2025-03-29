@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.core.type.TypeReference;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
@@ -104,7 +105,10 @@ public class StripeInvoiceService {
 
         // Call Stripe API to create customer
         String responseBody = callStripeApi("/customers", customerData);
-        Map<String, Object> response = objectMapper.readValue(responseBody, Map.class);
+
+        // Use TypeReference to avoid unchecked conversion warning
+        Map<String, Object> response = objectMapper.readValue(responseBody,
+                                        new TypeReference<Map<String, Object>>() {});
 
         return (String) response.get("id");
     }
@@ -128,7 +132,10 @@ public class StripeInvoiceService {
 
         // Call Stripe API to create invoice item
         String responseBody = callStripeApi("/invoiceitems", itemData);
-        Map<String, Object> response = objectMapper.readValue(responseBody, Map.class);
+
+        // Use TypeReference to avoid unchecked conversion warning
+        Map<String, Object> response = objectMapper.readValue(responseBody,
+                                        new TypeReference<Map<String, Object>>() {});
 
         return (String) response.get("id");
     }
@@ -145,8 +152,8 @@ public class StripeInvoiceService {
         // Call Stripe API to create invoice
         String responseBody = callStripeApi("/invoices", invoiceData);
 
-        // Return the parsed response
-        return objectMapper.readValue(responseBody, Map.class);
+        // Use TypeReference to avoid unchecked conversion warning
+        return objectMapper.readValue(responseBody, new TypeReference<Map<String, Object>>() {});
     }
 
     /**

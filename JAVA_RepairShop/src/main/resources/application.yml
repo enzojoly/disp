@@ -13,7 +13,7 @@ calendly:
 stripe:
   api:
     key: ${STRIPE_SECRET_KEY:}
-    publishable-key: ${STRIPE_PUBLISHABLE_KEY:pk_test_51R7oYvGdUZ9m46wApAnk6ZnLwXCclARbePEZhOzGQzoGY8dNIglDL9EHe6SM2OzzX3QDh8En1w5k1APRkp6jwZOS00gey9yX9O}
+    publishable-key: ${STRIPE_PUBLISHABLE_KEY:}
 
 # Create your API key via https://api-ninjas.com/profile
 api-ninjas:
