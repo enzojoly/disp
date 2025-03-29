@@ -37,6 +37,9 @@ public class StripeInvoiceService {
     @Value("${stripe.use.test.mode:false}")
     private boolean useTestMode;
 
+    @Value("${stripe.currency:gbp}")
+    private String currency;
+
     /**
      * Creates a Stripe invoice for a customer
      * @param customerEmail Customer email for the invoice
@@ -50,7 +53,9 @@ public class StripeInvoiceService {
                                               String description, String vehicleDetails,
                                               double amount) {
         logger.info("Generating Stripe invoice for customer: {}", customerName);
-        logger.info("Invoice amount: ${}", String.format("%.2f", amount));
+        logger.info("Invoice amount: {}{}",
+            currency.equalsIgnoreCase("gbp") ? "£" : currency.equalsIgnoreCase("usd") ? "$" : currency + " ",
+            String.format("%.2f", amount));
         logger.info("Using Stripe API in {} mode", useTestMode ? "TEST" : "PRODUCTION");
 
         try {
@@ -79,6 +84,7 @@ public class StripeInvoiceService {
             result.put("invoicePdf", invoiceData.get("invoice_pdf"));
             result.put("status", invoiceData.get("status"));
             result.put("createdAt", System.currentTimeMillis());
+            result.put("currency", currency.toLowerCase());
 
             return result;
         } catch (Exception e) {
@@ -92,6 +98,7 @@ public class StripeInvoiceService {
             errorResult.put("customerName", customerName);
             errorResult.put("amount", amount);
             errorResult.put("formattedAmount", String.format("%.2f", amount));
+            errorResult.put("currency", currency.toLowerCase());
 
             // Generate a fallback invoice ID so the process can continue
             String fallbackId = "error_inv_" + System.currentTimeMillis();
@@ -137,7 +144,7 @@ public class StripeInvoiceService {
         itemData.put("customer", customerId);
         itemData.put("description", fullDescription);
         itemData.put("amount", Math.round(amount * 100)); // Stripe uses cents
-        itemData.put("currency", "usd");
+        itemData.put("currency", currency.toLowerCase());
 
         // Call Stripe API to create invoice item
         String responseBody = callStripeApi("/invoiceitems", itemData);
@@ -248,9 +255,14 @@ public class StripeInvoiceService {
         invoiceInfo.put("invoiceUrl", "https://dashboard.stripe.com/test/invoices/" + invoiceId);
         invoiceInfo.put("invoicePdf", "https://dashboard.stripe.com/test/invoices/" + invoiceId + "/pdf");
         invoiceInfo.put("createdAt", System.currentTimeMillis());
+        invoiceInfo.put("currency", currency.toLowerCase());
 
-        logger.info("Created test invoice #{} for {} with amount ${}",
-                    invoiceId, customerName, String.format("%.2f", amount));
+        String currencySymbol = currency.equalsIgnoreCase("gbp") ? "£" :
+                               currency.equalsIgnoreCase("usd") ? "$" :
+                               currency + " ";
+
+        logger.info("Created test invoice #{} for {} with amount {}{}",
+                  invoiceId, customerName, currencySymbol, String.format("%.2f", amount));
         return invoiceInfo;
     }
 
