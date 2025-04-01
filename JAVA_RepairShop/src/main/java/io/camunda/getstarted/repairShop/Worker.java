@@ -176,7 +176,7 @@ public class Worker {
             HashMap<String, Object> resultVariables = new HashMap<>();
             resultVariables.put("MemberCheck", false); // Default to false, will set to true if valid
 
-            if (isExistingMember) {
+            if (isExistingMember && wantsToBeMember == false) {
                 // Existing member - validate membership number
                 String membershipNumber = getStringValue(variables, "MembershipNumber");
 
