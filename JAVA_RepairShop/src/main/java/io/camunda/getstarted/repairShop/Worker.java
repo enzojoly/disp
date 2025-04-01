@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.camunda.getstarted.repairShop.service.CalendlyService;
+import io.camunda.getstarted.repairShop.service.MembershipCheckService;
 import io.camunda.getstarted.repairShop.service.StripeInvoiceService;
 import io.camunda.zeebe.client.ZeebeClient;
 import io.camunda.zeebe.client.api.response.ActivatedJob;
@@ -30,6 +31,9 @@ public class Worker {
 
     @Autowired
     private StripeInvoiceService stripeInvoiceService;
+
+    @Autowired
+    private MembershipCheckService membershipCheckService;
 
     @Autowired
     private ZeebeClient zeebeClient;
@@ -104,6 +108,11 @@ public class Worker {
                     System.setProperty("STRIPE_USE_TEST_MODE", dotenv.get("STRIPE_USE_TEST_MODE"));
                     logger.info("Set STRIPE_USE_TEST_MODE from .env file");
                 }
+
+                if (dotenv.get("MEMBERSHIP_FILE_PATH") != null) {
+                    System.setProperty("membership.data.file-path", dotenv.get("MEMBERSHIP_FILE_PATH"));
+                    logger.info("Set membership.data.file-path from .env file");
+                }
             } else {
                 logger.warn(".env file not found. Will use system environment variables if available");
             }
@@ -137,6 +146,151 @@ public class Worker {
             logger.error("Failed to send message '{}': {}", messageName, e.getMessage(), e);
             throw new RuntimeException("Failed to send message: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Worker to check membership status and validate/create membership
+     */
+    @ZeebeWorker(type = "CheckMembership")
+    public void checkMembership(final JobClient client, final ActivatedJob job) {
+        Map<String, Object> variables = job.getVariablesAsMap();
+
+        try {
+            // Log variables for debugging
+            logger.info("CheckMembership worker received variables: {}", variables.keySet());
+
+            // Default MemberCheck to false (invalid until proven valid)
+            boolean memberCheckResult = false;
+
+            // Get customer information from variables
+            String customerName = getStringValue(variables, ProcessVariables.CUSTOMER_NAME, "CustomerName", "name");
+
+            // Check membership status from form data
+            boolean isExistingMember = Boolean.TRUE.equals(variables.get("SignedUp"));
+            boolean wantsToBeMember = Boolean.TRUE.equals(variables.get("SigningUp"));
+
+            logger.info("Processing membership for customer: {}", customerName);
+            logger.info("Is existing member: {}, Wants to be member: {}", isExistingMember, wantsToBeMember);
+
+            // Prepare result variables
+            HashMap<String, Object> resultVariables = new HashMap<>();
+            resultVariables.put("MemberCheck", false); // Default to false, will set to true if valid
+
+            if (isExistingMember) {
+                // Existing member - validate membership number
+                String membershipNumber = getStringValue(variables, "MembershipNumber");
+
+                if (membershipNumber != null && membershipCheckService.validateMembershipNumber(membershipNumber)) {
+                    // Valid membership number found
+                    memberCheckResult = true;
+                    resultVariables.put(ProcessVariables.IS_MEMBER, true);
+                    resultVariables.put("MembershipNumber", membershipNumber);
+                    resultVariables.put("SignedUp", true);
+                    resultVariables.put("SigningUp", false);
+                    logger.info("Valid membership confirmed for: {} with number {}", customerName, membershipNumber);
+                } else {
+                    // Invalid membership number
+                    logger.warn("Invalid membership number: {} for customer: {}", membershipNumber, customerName);
+                    // MemberCheck remains false, so form will be shown again
+                }
+            } else if (wantsToBeMember) {
+                // New member - generate membership number
+                String newMembershipNumber = membershipCheckService.generateMembershipNumber();
+
+                // Add to membership database
+                boolean addSuccess = membershipCheckService.addNewMember(newMembershipNumber, customerName);
+
+                if (addSuccess) {
+                    memberCheckResult = true;
+                    resultVariables.put(ProcessVariables.IS_MEMBER, true);
+                    resultVariables.put("MembershipNumber", newMembershipNumber);
+                    resultVariables.put("NewMember", true);
+                    resultVariables.put("SignedUp", false);
+                    resultVariables.put("SigningUp", true);
+                    logger.info("New member created: {} with number {}", customerName, newMembershipNumber);
+                } else {
+                    // Failed to add new member
+                    logger.error("Failed to create new membership for: {}", customerName);
+                    // Still allow process to continue, but without membership
+                    memberCheckResult = true;
+                    resultVariables.put(ProcessVariables.IS_MEMBER, false);
+                    resultVariables.put("SignedUp", false);
+                    resultVariables.put("SigningUp", false);
+                }
+            } else {
+                // Not a member and doesn't want to be - proceed normally
+                memberCheckResult = true;
+                resultVariables.put(ProcessVariables.IS_MEMBER, false);
+                resultVariables.put("SignedUp", false);
+                resultVariables.put("SigningUp", false);
+                logger.info("Customer {} is not a member and doesn't want to be one", customerName);
+            }
+
+            // Set MemberCheck result for the gateway condition
+            resultVariables.put("MemberCheck", memberCheckResult);
+
+            // Preserve other important customer and vehicle information
+            preserveCustomerAndVehicleInfo(variables, resultVariables);
+
+            // Complete the job with result variables
+            client.newCompleteCommand(job.getKey())
+                  .variables(resultVariables)
+                  .send()
+                  .exceptionally(throwable -> {
+                      logger.error("Failed to complete membership check", throwable);
+                      throw new RuntimeException("Could not complete membership check", throwable);
+                  });
+
+        } catch (Exception e) {
+            logger.error("Error checking membership", e);
+            client.newFailCommand(job.getKey())
+                  .retries(job.getRetries() - 1)
+                  .errorMessage("Error checking membership: " + e.getMessage())
+                  .send();
+        }
+    }
+
+    /**
+     * Helper method to preserve customer and vehicle information
+     */
+    private void preserveCustomerAndVehicleInfo(Map<String, Object> variables, Map<String, Object> resultVariables) {
+        // Vehicle information
+        String vehicleMake = getStringValue(variables, ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make", "VehicleMake");
+        String vehicleModel = getStringValue(variables, ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model", "VehicleModel");
+        String faultDescription = getStringValue(variables, ProcessVariables.FAULT_DESCRIPTION, "extraDetails", "faultDescription", "description");
+        String breakdownLocation = getStringValue(variables, ProcessVariables.BREAKDOWN_LOCATION, "VehicleLocation", "location");
+
+        if (vehicleMake != null) resultVariables.put(ProcessVariables.VEHICLE_MAKE, vehicleMake);
+        if (vehicleModel != null) resultVariables.put(ProcessVariables.VEHICLE_MODEL, vehicleModel);
+        if (faultDescription != null) resultVariables.put(ProcessVariables.FAULT_DESCRIPTION, faultDescription);
+        if (breakdownLocation != null) resultVariables.put(ProcessVariables.BREAKDOWN_LOCATION, breakdownLocation);
+
+        // Also preserve with original field names
+        if (variables.containsKey("vehicleMake")) resultVariables.put("vehicleMake", vehicleMake);
+        if (variables.containsKey("vehicleModel")) resultVariables.put("vehicleModel", vehicleModel);
+        if (variables.containsKey("faultDescription")) resultVariables.put("faultDescription", faultDescription);
+        if (variables.containsKey("VehicleLocation")) resultVariables.put("VehicleLocation", breakdownLocation);
+        if (variables.containsKey("extraDetails")) resultVariables.put("extraDetails", faultDescription);
+
+        // Customer information
+        String customerName = getStringValue(variables, ProcessVariables.CUSTOMER_NAME, "CustomerName", "name");
+        String customerEmail = getStringValue(variables, ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email");
+
+        if (customerName != null) resultVariables.put(ProcessVariables.CUSTOMER_NAME, customerName);
+        if (customerEmail != null) resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
+
+        // Also preserve with original field names
+        if (variables.containsKey("CustomerName")) resultVariables.put("CustomerName", customerName);
+        if (variables.containsKey("CustomerEmail")) resultVariables.put("CustomerEmail", customerEmail);
+
+        // Preserve breakdown status if available
+        if (variables.containsKey("Breakdown")) {
+            resultVariables.put("Breakdown", variables.get("Breakdown"));
+        }
+
+        // Preserve towing information
+        String towInfoAdditional = getStringValue(variables, "towInfoAdditional", "extraInfo");
+        if (towInfoAdditional != null) resultVariables.put("extraInfo", towInfoAdditional);
     }
 
     /**
@@ -250,6 +404,11 @@ public class Worker {
 
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
+            // Preserve membership number if present
+            if (variables.containsKey("MembershipNumber")) {
+                resultVariables.put("MembershipNumber", variables.get("MembershipNumber"));
+            }
+
             // Message variables for potential message subscribers
             Map<String, Object> messageVariables = new HashMap<>();
             messageVariables.put("invoiceId", invoiceResult.get("invoiceId"));
@@ -327,6 +486,9 @@ public class Worker {
             }
             if (variables.containsKey("SigningUp")) {
                 resultVariables.put("SigningUp", variables.get("SigningUp"));
+            }
+            if (variables.containsKey("MembershipNumber")) {
+                resultVariables.put("MembershipNumber", variables.get("MembershipNumber"));
             }
 
             // The process instance key is used as correlation key for the message
@@ -417,6 +579,11 @@ public class Worker {
                                     Boolean.TRUE.equals(variables.get("SigningUp"));
 
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
+
+            // Preserve membership number if present
+            if (variables.containsKey("MembershipNumber")) {
+                resultVariables.put("MembershipNumber", variables.get("MembershipNumber"));
+            }
 
             // Create message variables for potential receivers
             Map<String, Object> messageVariables = new HashMap<>();
@@ -531,6 +698,11 @@ public class Worker {
                 resultVariables.put("SigningUp", becomeMember);
             }
 
+            // Preserve membership number if present
+            if (variables.containsKey("MembershipNumber")) {
+                resultVariables.put("MembershipNumber", variables.get("MembershipNumber"));
+            }
+
             logger.info("Tow request processed with priority: {}", priority);
             logger.info("Vehicle details: {}", vehicleDetails);
             logger.info("Breakdown location: {}", breakdownLocation);
@@ -598,6 +770,11 @@ public class Worker {
             }
             if (variables.containsKey("SigningUp")) {
                 resultVariables.put("SigningUp", newMember);
+            }
+
+            // Preserve membership number if it exists
+            if (variables.containsKey("MembershipNumber")) {
+                resultVariables.put("MembershipNumber", variables.get("MembershipNumber"));
             }
 
             // Preserve vehicle information - try all possible field names
@@ -707,6 +884,17 @@ public class Worker {
             resultVariables.put("discountPercentage", discountPercentage);
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus); // Keep consistent membership status
             resultVariables.put(ProcessVariables.PROCESS_INSTANCE_KEY, processInstanceKey);
+
+            // Preserve membership related fields
+            if (variables.containsKey("SignedUp")) {
+                resultVariables.put("SignedUp", variables.get("SignedUp"));
+            }
+            if (variables.containsKey("SigningUp")) {
+                resultVariables.put("SigningUp", variables.get("SigningUp"));
+            }
+            if (variables.containsKey("MembershipNumber")) {
+                resultVariables.put("MembershipNumber", variables.get("MembershipNumber"));
+            }
 
             // Preserve vehicle information - use helper method to try multiple field names
             String vehicleMake = getStringValue(variables, ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make");
@@ -835,10 +1023,13 @@ public class Worker {
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
             if (variables.containsKey("SignedUp")) {
-                resultVariables.put("SignedUp", membershipStatus);
+                resultVariables.put("SignedUp", variables.get("SignedUp"));
             }
             if (variables.containsKey("SigningUp")) {
-                resultVariables.put("SigningUp", membershipStatus);
+                resultVariables.put("SigningUp", variables.get("SigningUp"));
+            }
+            if (variables.containsKey("MembershipNumber")) {
+                resultVariables.put("MembershipNumber", variables.get("MembershipNumber"));
             }
 
             // Preserve customer information if available
@@ -920,6 +1111,11 @@ public class Worker {
                                      Boolean.TRUE.equals(variables.get("SigningUp"));
 
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
+
+            // Preserve membership number if present
+            if (variables.containsKey("MembershipNumber")) {
+                resultVariables.put("MembershipNumber", variables.get("MembershipNumber"));
+            }
 
             // Send message to notify of work completion (this could be used for future receive tasks)
             Map<String, Object> messageVariables = new HashMap<>();
@@ -1007,6 +1203,11 @@ public class Worker {
                 resultVariables.put(ProcessVariables.IS_MEMBER, variables.get(ProcessVariables.IS_MEMBER));
             }
 
+            // Preserve membership number if present
+            if (variables.containsKey("MembershipNumber")) {
+                resultVariables.put("MembershipNumber", variables.get("MembershipNumber"));
+            }
+
             // Complete the task
             client.newCompleteCommand(job.getKey())
                   .variables(resultVariables)
@@ -1080,6 +1281,20 @@ public class Worker {
             resultVariables.put(ProcessVariables.REPAIR_COSTS, repairCost);
             resultVariables.put(ProcessVariables.FINAL_PRICE, finalPrice);
             resultVariables.put(ProcessVariables.TOTAL_PRICE, finalPrice);
+
+            // Preserve membership information
+            if (variables.containsKey(ProcessVariables.IS_MEMBER)) {
+                resultVariables.put(ProcessVariables.IS_MEMBER, variables.get(ProcessVariables.IS_MEMBER));
+            }
+            if (variables.containsKey("SignedUp")) {
+                resultVariables.put("SignedUp", variables.get("SignedUp"));
+            }
+            if (variables.containsKey("SigningUp")) {
+                resultVariables.put("SigningUp", variables.get("SigningUp"));
+            }
+            if (variables.containsKey("MembershipNumber")) {
+                resultVariables.put("MembershipNumber", variables.get("MembershipNumber"));
+            }
 
             // Complete the task
             client.newCompleteCommand(job.getKey())
@@ -1163,6 +1378,17 @@ public class Worker {
                                      Boolean.TRUE.equals(variables.get("SigningUp"));
 
             bookingInfo.put(ProcessVariables.IS_MEMBER, membershipStatus);
+
+            // Preserve membership details
+            if (variables.containsKey("SignedUp")) {
+                bookingInfo.put("SignedUp", variables.get("SignedUp"));
+            }
+            if (variables.containsKey("SigningUp")) {
+                bookingInfo.put("SigningUp", variables.get("SigningUp"));
+            }
+            if (variables.containsKey("MembershipNumber")) {
+                bookingInfo.put("MembershipNumber", variables.get("MembershipNumber"));
+            }
 
             // Complete the task with booking info
             client.newCompleteCommand(job.getKey())
@@ -1249,6 +1475,20 @@ public class Worker {
             resultVariables.put(ProcessVariables.FINAL_PRICE, finalPrice);
             resultVariables.put(ProcessVariables.TOTAL_PRICE, finalPrice);
 
+            // Preserve membership details
+            if (variables.containsKey(ProcessVariables.IS_MEMBER)) {
+                resultVariables.put(ProcessVariables.IS_MEMBER, variables.get(ProcessVariables.IS_MEMBER));
+            }
+            if (variables.containsKey("SignedUp")) {
+                resultVariables.put("SignedUp", variables.get("SignedUp"));
+            }
+            if (variables.containsKey("SigningUp")) {
+                resultVariables.put("SigningUp", variables.get("SigningUp"));
+            }
+            if (variables.containsKey("MembershipNumber")) {
+                resultVariables.put("MembershipNumber", variables.get("MembershipNumber"));
+            }
+
             // Complete the task
             client.newCompleteCommand(job.getKey())
                 .variables(resultVariables)
@@ -1325,6 +1565,11 @@ public class Worker {
                                      Boolean.TRUE.equals(variables.get("SigningUp"));
 
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
+
+            // Preserve membership number if present
+            if (variables.containsKey("MembershipNumber")) {
+                resultVariables.put("MembershipNumber", variables.get("MembershipNumber"));
+            }
 
             // Message variables
             Map<String, Object> messageVariables = new HashMap<>();
@@ -1417,6 +1662,17 @@ public class Worker {
 
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
+            // Preserve membership fields
+            if (variables.containsKey("SignedUp")) {
+                resultVariables.put("SignedUp", variables.get("SignedUp"));
+            }
+            if (variables.containsKey("SigningUp")) {
+                resultVariables.put("SigningUp", variables.get("SigningUp"));
+            }
+            if (variables.containsKey("MembershipNumber")) {
+                resultVariables.put("MembershipNumber", variables.get("MembershipNumber"));
+            }
+
             // Message variables
             Map<String, Object> messageVariables = new HashMap<>();
             messageVariables.put(ProcessVariables.FINAL_PRICE, finalPrice);
@@ -1498,6 +1754,17 @@ public class Worker {
                                      Boolean.TRUE.equals(variables.get("SigningUp"));
 
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
+
+            // Preserve membership fields
+            if (variables.containsKey("SignedUp")) {
+                resultVariables.put("SignedUp", variables.get("SignedUp"));
+            }
+            if (variables.containsKey("SigningUp")) {
+                resultVariables.put("SigningUp", variables.get("SigningUp"));
+            }
+            if (variables.containsKey("MembershipNumber")) {
+                resultVariables.put("MembershipNumber", variables.get("MembershipNumber"));
+            }
 
             // Message variables
             Map<String, Object> messageVariables = new HashMap<>();
@@ -1614,6 +1881,9 @@ public class Worker {
             if (variables.containsKey("SigningUp")) {
                 resultVariables.put("SigningUp", variables.get("SigningUp"));
             }
+            if (variables.containsKey("MembershipNumber")) {
+                resultVariables.put("MembershipNumber", variables.get("MembershipNumber"));
+            }
 
             // Send message for the tow request (for potential future receive tasks)
             Map<String, Object> messageVariables = new HashMap<>();
@@ -1666,6 +1936,58 @@ public class Worker {
         String lastKey = keys[keys.length-1];
         if (lastKey != null && !lastKey.contains(".")) {
             // The last key might be a default value, not a key to search for
+            return lastKey;
+        }
+
+        return null;
+    }
+
+    /**
+     * Helper method to get a numeric value from multiple possible variable names
+     * @param variables The variable map
+     * @param keys Multiple possible keys to try
+     * @param defaultValue Default value if none found
+     * @return The first non-null numeric value found, or the default value if none found
+     */
+    private double getNumberValue(Map<String, Object> variables, String firstKey, String secondKey, double defaultValue) {
+        // Try first key
+        if (firstKey != null && variables.containsKey(firstKey) && variables.get(firstKey) != null) {
+            Object value = variables.get(firstKey);
+            if (value instanceof Number) {
+                return ((Number) value).doubleValue();
+            } else if (value instanceof String) {
+                try {
+                    return Double.parseDouble((String) value);
+                } catch (NumberFormatException e) {
+                    // Not a valid number, continue to next key
+                }
+            }
+        }
+
+        // Try second key
+        if (secondKey != null && variables.containsKey(secondKey) && variables.get(secondKey) != null) {
+            Object value = variables.get(secondKey);
+            if (value instanceof Number) {
+                return ((Number) value).doubleValue();
+            } else if (value instanceof String) {
+                try {
+                    return Double.parseDouble((String) value);
+                } catch (NumberFormatException e) {
+                    // Not a valid number, return default
+                }
+            }
+        }
+
+        return defaultValue;
+    }
+
+    /**
+     * Overloaded helper to get a numeric value from a single key
+     */
+    private double getNumberValue(Map<String, Object> variables, String key, double defaultValue) {
+        return getNumberValue(variables, key, null, defaultValue);
+    }
+}// The last key might be a default value, not a key to search for
             return lastKey;
         }
 
