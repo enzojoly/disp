@@ -704,9 +704,6 @@ public void checkMembership(final JobClient client, final ActivatedJob job) {
         }
     }
 
-/**
- * Worker to calculate initial payment (deposit)
- */
 @ZeebeWorker(type = "InitialCostCheck")
 public void calculateInitialPayment(final JobClient client, final ActivatedJob job) {
     Map<String, Object> variables = job.getVariablesAsMap();
@@ -787,7 +784,18 @@ public void calculateInitialPayment(final JobClient client, final ActivatedJob j
             }
         }
         else if (wantsToBeMember) {
-            // Wants to be a new member - could generate number here if needed
+            // Generate new membership number and add customer to CSV
+            String newMembershipNumber = membershipCheckService.generateMembershipNumber();
+            boolean addSuccess = membershipCheckService.addNewMember(newMembershipNumber, customerName);
+
+            if (addSuccess) {
+                logger.info("Successfully added new member: {} with number: {}", customerName, newMembershipNumber);
+                resultVariables.put("MembershipNumber", newMembershipNumber);
+            } else {
+                logger.error("Failed to add new member: {} to CSV file", customerName);
+            }
+
+            // Still treat as member even if CSV update fails to maintain existing behavior
             finalMemberStatus = true;
         }
 
