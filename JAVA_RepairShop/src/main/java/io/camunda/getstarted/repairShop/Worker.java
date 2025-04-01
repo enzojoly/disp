@@ -70,7 +70,8 @@ public class Worker {
     }
 
     /**
-     * Constants for message names - ensure these match the BPMN message names exactly
+     * Constants for message names - ensure these match the BPMN message names
+     * exactly
      */
     public static class MessageNames {
         // Use the exact message names from your BPMN file
@@ -126,20 +127,21 @@ public class Worker {
 
     /**
      * Helper method to send a message to a specific process instance
-     * @param messageName The name of the message
+     *
+     * @param messageName    The name of the message
      * @param correlationKey The process instance key to correlate with
-     * @param variables The variables to include in the message
+     * @param variables      The variables to include in the message
      */
     private void sendMessage(String messageName, String correlationKey, Map<String, Object> variables) {
         try {
             logger.info("Sending message '{}' with correlation key '{}'", messageName, correlationKey);
 
             zeebeClient.newPublishMessageCommand()
-                .messageName(messageName)
-                .correlationKey(correlationKey)
-                .variables(variables)
-                .send()
-                .join();
+                    .messageName(messageName)
+                    .correlationKey(correlationKey)
+                    .variables(variables)
+                    .send()
+                    .join();
 
             logger.info("Message '{}' sent successfully", messageName);
         } catch (Exception e) {
@@ -148,140 +150,114 @@ public class Worker {
         }
     }
 
-    /**
-     * Worker to check membership status and validate/create membership
-     */
-    @ZeebeWorker(type = "CheckMembership")
-    public void checkMembership(final JobClient client, final ActivatedJob job) {
-        Map<String, Object> variables = job.getVariablesAsMap();
+@ZeebeWorker(type = "CheckMembership")
+public void checkMembership(final JobClient client, final ActivatedJob job) {
+    Map<String, Object> variables = job.getVariablesAsMap();
 
-        try {
-            // Log variables for debugging
-            logger.info("CheckMembership worker received variables: {}", variables.keySet());
+    try {
+        String customerName = getStringValue(variables, ProcessVariables.CUSTOMER_NAME, "CustomerName", "name");
+        boolean isExistingMember = Boolean.TRUE.equals(variables.get("SignedUp"));
+        boolean wantsToBeMember = Boolean.TRUE.equals(variables.get("SigningUp"));
 
-            // Default MemberCheck to false (invalid until proven valid)
-            boolean memberCheckResult = false;
+        logger.info("Processing membership for customer: {}", customerName);
+        logger.info("Is existing member: {}, Wants to be member: {}", isExistingMember, wantsToBeMember);
 
-            // Get customer information from variables
-            String customerName = getStringValue(variables, ProcessVariables.CUSTOMER_NAME, "CustomerName", "name");
+        // CRITICAL CHANGE: If SigningUp is true, MemberCheck is ALWAYS true
+        // This is the ONLY logic that matters in this method
+        boolean memberCheckResult = wantsToBeMember ||
+                                   (!isExistingMember) ||
+                                   (isExistingMember && membershipCheckService.validateMembershipNumber(getStringValue(variables, "MembershipNumber")));
 
-            // Check membership status from form data
-            boolean isExistingMember = Boolean.TRUE.equals(variables.get("SignedUp"));
-            boolean wantsToBeMember = Boolean.TRUE.equals(variables.get("SigningUp"));
+        HashMap<String, Object> resultVariables = new HashMap<>();
+        resultVariables.put("MemberCheck", memberCheckResult);
 
-            logger.info("Processing membership for customer: {}", customerName);
-            logger.info("Is existing member: {}, Wants to be member: {}", isExistingMember, wantsToBeMember);
+        if (wantsToBeMember) {
+            String newMembershipNumber = membershipCheckService.generateMembershipNumber();
+            boolean addSuccess = membershipCheckService.addNewMember(newMembershipNumber, customerName);
 
-            // Prepare result variables
-            HashMap<String, Object> resultVariables = new HashMap<>();
-            resultVariables.put("MemberCheck", false); // Default to false, will set to true if valid
-
-            if (isExistingMember && wantsToBeMember == false) {
-                // Existing member - validate membership number
-                String membershipNumber = getStringValue(variables, "MembershipNumber");
-
-                if (membershipNumber != null && membershipCheckService.validateMembershipNumber(membershipNumber)) {
-                    // Valid membership number found
-                    memberCheckResult = true;
-                    resultVariables.put(ProcessVariables.IS_MEMBER, true);
-                    resultVariables.put("MembershipNumber", membershipNumber);
-                    resultVariables.put("SignedUp", true);
-                    resultVariables.put("SigningUp", false);
-                    logger.info("Valid membership confirmed for: {} with number {}", customerName, membershipNumber);
-                } else {
-                    // Invalid membership number
-                    logger.warn("Invalid membership number: {} for customer: {}", membershipNumber, customerName);
-                    // MemberCheck remains false, so form will be shown again
-                }
-            } else if (wantsToBeMember) {
-                // New member - generate membership number
-                String newMembershipNumber = membershipCheckService.generateMembershipNumber();
-
-                // Add to membership database
-                boolean addSuccess = membershipCheckService.addNewMember(newMembershipNumber, customerName);
-
-                if (addSuccess) {
-                    memberCheckResult = true;
-                    resultVariables.put(ProcessVariables.IS_MEMBER, true);
-                    resultVariables.put("MembershipNumber", newMembershipNumber);
-                    resultVariables.put("NewMember", true);
-                    resultVariables.put("SignedUp", false);
-                    resultVariables.put("SigningUp", true);
-                    logger.info("New member created: {} with number {}", customerName, newMembershipNumber);
-                } else {
-                    // Failed to add new member
-                    logger.error("Failed to create new membership for: {}", customerName);
-                    // Still allow process to continue, but without membership
-                    memberCheckResult = true;
-                    resultVariables.put(ProcessVariables.IS_MEMBER, false);
-                    resultVariables.put("SignedUp", false);
-                    resultVariables.put("SigningUp", false);
-                }
-            } else {
-                // Not a member and doesn't want to be - proceed normally
-                memberCheckResult = true;
-                resultVariables.put(ProcessVariables.IS_MEMBER, false);
-                resultVariables.put("SignedUp", false);
-                resultVariables.put("SigningUp", false);
-                logger.info("Customer {} is not a member and doesn't want to be one", customerName);
-            }
-
-            // Set MemberCheck result for the gateway condition
-            resultVariables.put("MemberCheck", memberCheckResult);
-
-            // Preserve other important customer and vehicle information
-            preserveCustomerAndVehicleInfo(variables, resultVariables);
-
-            // Complete the job with result variables
-            client.newCompleteCommand(job.getKey())
-                  .variables(resultVariables)
-                  .send()
-                  .exceptionally(throwable -> {
-                      logger.error("Failed to complete membership check", throwable);
-                      throw new RuntimeException("Could not complete membership check", throwable);
-                  });
-
-        } catch (Exception e) {
-            logger.error("Error checking membership", e);
-            client.newFailCommand(job.getKey())
-                  .retries(job.getRetries() - 1)
-                  .errorMessage("Error checking membership: " + e.getMessage())
-                  .send();
+            resultVariables.put(ProcessVariables.IS_MEMBER, addSuccess);
+            resultVariables.put("MembershipNumber", newMembershipNumber);
+            resultVariables.put("SignedUp", false);
+            resultVariables.put("SigningUp", true);
+        } else if (isExistingMember && membershipCheckService.validateMembershipNumber(getStringValue(variables, "MembershipNumber"))) {
+            resultVariables.put(ProcessVariables.IS_MEMBER, true);
+            resultVariables.put("SignedUp", true);
+            resultVariables.put("SigningUp", false);
+        } else {
+            resultVariables.put(ProcessVariables.IS_MEMBER, false);
+            resultVariables.put("SignedUp", false);
+            resultVariables.put("SigningUp", false);
         }
+
+        logger.info("MemberCheck result: {}", memberCheckResult);
+
+        preserveCustomerAndVehicleInfo(variables, resultVariables);
+
+        client.newCompleteCommand(job.getKey())
+              .variables(resultVariables)
+              .send()
+              .exceptionally(throwable -> {
+                  logger.error("Failed to complete membership check", throwable);
+                  throw new RuntimeException("Could not complete membership check", throwable);
+              });
+    } catch (Exception e) {
+        logger.error("Error checking membership", e);
+        client.newFailCommand(job.getKey())
+              .retries(job.getRetries() - 1)
+              .errorMessage("Error checking membership: " + e.getMessage())
+              .send();
     }
+}
 
     /**
      * Helper method to preserve customer and vehicle information
      */
     private void preserveCustomerAndVehicleInfo(Map<String, Object> variables, Map<String, Object> resultVariables) {
         // Vehicle information
-        String vehicleMake = getStringValue(variables, ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make", "VehicleMake");
-        String vehicleModel = getStringValue(variables, ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model", "VehicleModel");
-        String faultDescription = getStringValue(variables, ProcessVariables.FAULT_DESCRIPTION, "extraDetails", "faultDescription", "description");
-        String breakdownLocation = getStringValue(variables, ProcessVariables.BREAKDOWN_LOCATION, "VehicleLocation", "location");
+        String vehicleMake = getStringValue(variables, ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make",
+                "VehicleMake");
+        String vehicleModel = getStringValue(variables, ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model",
+                "VehicleModel");
+        String faultDescription = getStringValue(variables, ProcessVariables.FAULT_DESCRIPTION, "extraDetails",
+                "faultDescription", "description");
+        String breakdownLocation = getStringValue(variables, ProcessVariables.BREAKDOWN_LOCATION, "VehicleLocation",
+                "location");
 
-        if (vehicleMake != null) resultVariables.put(ProcessVariables.VEHICLE_MAKE, vehicleMake);
-        if (vehicleModel != null) resultVariables.put(ProcessVariables.VEHICLE_MODEL, vehicleModel);
-        if (faultDescription != null) resultVariables.put(ProcessVariables.FAULT_DESCRIPTION, faultDescription);
-        if (breakdownLocation != null) resultVariables.put(ProcessVariables.BREAKDOWN_LOCATION, breakdownLocation);
+        if (vehicleMake != null)
+            resultVariables.put(ProcessVariables.VEHICLE_MAKE, vehicleMake);
+        if (vehicleModel != null)
+            resultVariables.put(ProcessVariables.VEHICLE_MODEL, vehicleModel);
+        if (faultDescription != null)
+            resultVariables.put(ProcessVariables.FAULT_DESCRIPTION, faultDescription);
+        if (breakdownLocation != null)
+            resultVariables.put(ProcessVariables.BREAKDOWN_LOCATION, breakdownLocation);
 
         // Also preserve with original field names
-        if (variables.containsKey("vehicleMake")) resultVariables.put("vehicleMake", vehicleMake);
-        if (variables.containsKey("vehicleModel")) resultVariables.put("vehicleModel", vehicleModel);
-        if (variables.containsKey("faultDescription")) resultVariables.put("faultDescription", faultDescription);
-        if (variables.containsKey("VehicleLocation")) resultVariables.put("VehicleLocation", breakdownLocation);
-        if (variables.containsKey("extraDetails")) resultVariables.put("extraDetails", faultDescription);
+        if (variables.containsKey("vehicleMake"))
+            resultVariables.put("vehicleMake", vehicleMake);
+        if (variables.containsKey("vehicleModel"))
+            resultVariables.put("vehicleModel", vehicleModel);
+        if (variables.containsKey("faultDescription"))
+            resultVariables.put("faultDescription", faultDescription);
+        if (variables.containsKey("VehicleLocation"))
+            resultVariables.put("VehicleLocation", breakdownLocation);
+        if (variables.containsKey("extraDetails"))
+            resultVariables.put("extraDetails", faultDescription);
 
         // Customer information
         String customerName = getStringValue(variables, ProcessVariables.CUSTOMER_NAME, "CustomerName", "name");
         String customerEmail = getStringValue(variables, ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email");
 
-        if (customerName != null) resultVariables.put(ProcessVariables.CUSTOMER_NAME, customerName);
-        if (customerEmail != null) resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
+        if (customerName != null)
+            resultVariables.put(ProcessVariables.CUSTOMER_NAME, customerName);
+        if (customerEmail != null)
+            resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
 
         // Also preserve with original field names
-        if (variables.containsKey("CustomerName")) resultVariables.put("CustomerName", customerName);
-        if (variables.containsKey("CustomerEmail")) resultVariables.put("CustomerEmail", customerEmail);
+        if (variables.containsKey("CustomerName"))
+            resultVariables.put("CustomerName", customerName);
+        if (variables.containsKey("CustomerEmail"))
+            resultVariables.put("CustomerEmail", customerEmail);
 
         // Preserve breakdown status if available
         if (variables.containsKey("Breakdown")) {
@@ -290,7 +266,8 @@ public class Worker {
 
         // Preserve towing information
         String towInfoAdditional = getStringValue(variables, "towInfoAdditional", "extraInfo");
-        if (towInfoAdditional != null) resultVariables.put("extraInfo", towInfoAdditional);
+        if (towInfoAdditional != null)
+            resultVariables.put("extraInfo", towInfoAdditional);
     }
 
     /**
@@ -305,8 +282,10 @@ public class Worker {
             logger.info("stripe-invoice worker received variables: {}", variables.keySet());
 
             // Get the final price from process variables - prioritize different variations
-            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COST, ProcessVariables.REPAIR_COSTS, 0.0);
-            double finalPrice = getNumberValue(variables, ProcessVariables.FINAL_PRICE, ProcessVariables.TOTAL_PRICE, repairCost);
+            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COST, ProcessVariables.REPAIR_COSTS,
+                    0.0);
+            double finalPrice = getNumberValue(variables, ProcessVariables.FINAL_PRICE, ProcessVariables.TOTAL_PRICE,
+                    repairCost);
 
             // Ensure we have a valid positive amount
             if (finalPrice < 0.01 && repairCost > 0) {
@@ -322,15 +301,15 @@ public class Worker {
 
             // Get customer and vehicle information
             String customerName = getStringValue(variables,
-                ProcessVariables.CUSTOMER_NAME, "CustomerName", "name", "Customer");
+                    ProcessVariables.CUSTOMER_NAME, "CustomerName", "name", "Customer");
             String customerEmail = getStringValue(variables,
-                ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email", "customer@example.com");
+                    ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email", "customer@example.com");
             String vehicleMake = getStringValue(variables,
-                ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make", "Vehicle");
+                    ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make", "Vehicle");
             String vehicleModel = getStringValue(variables,
-                ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model", "Model");
+                    ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model", "Model");
             String faultDescription = getStringValue(variables,
-                ProcessVariables.FAULT_DESCRIPTION, "extraDetails", "faultDescription", "Repair services");
+                    ProcessVariables.FAULT_DESCRIPTION, "extraDetails", "faultDescription", "Repair services");
 
             // Prepare vehicle details and description for the invoice
             String vehicleDetails = vehicleMake + " " + vehicleModel;
@@ -352,20 +331,18 @@ public class Worker {
 
             if (useTestMode) {
                 invoiceResult = stripeInvoiceService.createTestInvoice(
-                    customerEmail,
-                    customerName,
-                    serviceDescription,
-                    vehicleDetails,
-                    finalPrice
-                );
+                        customerEmail,
+                        customerName,
+                        serviceDescription,
+                        vehicleDetails,
+                        finalPrice);
             } else {
                 invoiceResult = stripeInvoiceService.generateInvoice(
-                    customerEmail,
-                    customerName,
-                    serviceDescription,
-                    vehicleDetails,
-                    finalPrice
-                );
+                        customerEmail,
+                        customerName,
+                        serviceDescription,
+                        vehicleDetails,
+                        finalPrice);
             }
 
             // Get the process instance key for message correlation
@@ -399,8 +376,8 @@ public class Worker {
 
             // Preserve membership status
             boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
-                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
-                                     Boolean.TRUE.equals(variables.get("SigningUp"));
+                    Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                    Boolean.TRUE.equals(variables.get("SigningUp"));
 
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
@@ -419,9 +396,9 @@ public class Worker {
 
             // Complete the job first
             client.newCompleteCommand(job.getKey())
-                  .variables(resultVariables)
-                  .send()
-                  .join();
+                    .variables(resultVariables)
+                    .send()
+                    .join();
 
             // Then send a message that the invoice has been generated
             sendMessage(MessageNames.INVOICE_GENERATED, processInstanceKey, messageVariables);
@@ -431,9 +408,9 @@ public class Worker {
         } catch (Exception e) {
             logger.error("Error generating Stripe invoice", e);
             client.newFailCommand(job.getKey())
-                  .retries(job.getRetries() - 1)
-                  .errorMessage("Error generating Stripe invoice: " + e.getMessage())
-                  .send();
+                    .retries(job.getRetries() - 1)
+                    .errorMessage("Error generating Stripe invoice: " + e.getMessage())
+                    .send();
         }
     }
 
@@ -458,9 +435,10 @@ public class Worker {
             String customerName = getStringValue(variables, ProcessVariables.CUSTOMER_NAME, "CustomerName", "name");
 
             logger.info("Informing customer {} of initial cost £{} for vehicle {} {}",
-                customerName, String.format("%.2f", deposit), vehicleMake, vehicleModel);
+                    customerName, String.format("%.2f", deposit), vehicleMake, vehicleModel);
 
-            // In a real implementation, this would send an actual notification to the customer
+            // In a real implementation, this would send an actual notification to the
+            // customer
             // For demo, we'll just log it
 
             // Prepare variables that need to be passed forward
@@ -475,8 +453,8 @@ public class Worker {
 
             // Preserve membership status
             boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
-                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
-                                     Boolean.TRUE.equals(variables.get("SigningUp"));
+                    Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                    Boolean.TRUE.equals(variables.get("SigningUp"));
 
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
@@ -505,9 +483,9 @@ public class Worker {
 
             // Complete the job first
             client.newCompleteCommand(job.getKey())
-                  .variables(resultVariables)
-                  .send()
-                  .join();
+                    .variables(resultVariables)
+                    .send()
+                    .join();
 
             // Then send a message to simulate customer payment (for demo purposes)
             // In a real implementation, this would be triggered by an actual payment event
@@ -517,9 +495,9 @@ public class Worker {
         } catch (Exception e) {
             logger.error("Error in inform-customer-init-cost", e);
             client.newFailCommand(job.getKey())
-                  .retries(job.getRetries() - 1)
-                  .errorMessage("Error informing customer of initial cost: " + e.getMessage())
-                  .send();
+                    .retries(job.getRetries() - 1)
+                    .errorMessage("Error informing customer of initial cost: " + e.getMessage())
+                    .send();
         }
     }
 
@@ -532,7 +510,8 @@ public class Worker {
 
         try {
             // Get repair cost - check both possible variable names
-            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COST, ProcessVariables.REPAIR_COSTS, 500.0);
+            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COST, ProcessVariables.REPAIR_COSTS,
+                    500.0);
 
             // Get vehicle information
             String vehicleMake = getStringValue(variables, ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make");
@@ -575,8 +554,8 @@ public class Worker {
 
             // Preserve membership status
             boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
-                                    Boolean.TRUE.equals(variables.get("SignedUp")) ||
-                                    Boolean.TRUE.equals(variables.get("SigningUp"));
+                    Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                    Boolean.TRUE.equals(variables.get("SigningUp"));
 
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
@@ -594,9 +573,9 @@ public class Worker {
 
             // Complete the job first
             client.newCompleteCommand(job.getKey())
-                .variables(resultVariables)
-                .send()
-                .join();
+                    .variables(resultVariables)
+                    .send()
+                    .join();
 
             // Then send the message (if there are message-waiting tasks for this)
             // This is optional depending on your BPMN design
@@ -605,9 +584,9 @@ public class Worker {
         } catch (Exception e) {
             logger.error("Error in notify-reception-costing worker", e);
             client.newFailCommand(job.getKey())
-                .retries(job.getRetries() - 1)
-                .errorMessage("Error notifying reception of costs: " + e.getMessage())
-                .send();
+                    .retries(job.getRetries() - 1)
+                    .errorMessage("Error notifying reception of costs: " + e.getMessage())
+                    .send();
         }
     }
 
@@ -641,9 +620,9 @@ public class Worker {
             // Get membership status - try all possible variable names
             // Check multiple fields for membership status
             boolean isMember = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
-                              Boolean.TRUE.equals(variables.get("SignedUp"));
+                    Boolean.TRUE.equals(variables.get("SignedUp"));
             boolean becomeMember = Boolean.TRUE.equals(variables.get("becomeMember")) ||
-                                  Boolean.TRUE.equals(variables.get("SigningUp"));
+                    Boolean.TRUE.equals(variables.get("SigningUp"));
 
             boolean membershipStatus = isMember || becomeMember;
 
@@ -709,159 +688,132 @@ public class Worker {
 
             // Complete the job with result variables
             client.newCompleteCommand(job.getKey())
-                  .variables(resultVariables)
-                  .send()
-                  .exceptionally((throwable -> {
-                      logger.error("Failed to complete tow request processing", throwable);
-                      throw new RuntimeException("Could not process tow request", throwable);
-                  }));
+                    .variables(resultVariables)
+                    .send()
+                    .exceptionally((throwable -> {
+                        logger.error("Failed to complete tow request processing", throwable);
+                        throw new RuntimeException("Could not process tow request", throwable);
+                    }));
 
         } catch (Exception e) {
             logger.error("Error processing tow request", e);
             client.newFailCommand(job.getKey())
-                  .retries(job.getRetries() - 1)
-                  .errorMessage("Error processing tow request: " + e.getMessage())
-                  .send();
+                    .retries(job.getRetries() - 1)
+                    .errorMessage("Error processing tow request: " + e.getMessage())
+                    .send();
         }
     }
 
-    /**
-     * Worker to calculate initial payment (deposit)
-     */
-    @ZeebeWorker(type = "InitialCostCheck")
-    public void calculateInitialPayment(final JobClient client, final ActivatedJob job) {
-        Map<String, Object> variables = job.getVariablesAsMap();
+/**
+ * Worker to calculate initial payment (deposit)
+ */
+@ZeebeWorker(type = "InitialCostCheck")
+public void calculateInitialPayment(final JobClient client, final ActivatedJob job) {
+    Map<String, Object> variables = job.getVariablesAsMap();
 
-        try {
-            // Log all variables for debugging
-            logger.info("InitialCostCheck received variables: {}", variables.keySet());
+    try {
+        // Log all variables for debugging
+        logger.info("InitialCostCheck received variables: {}", variables.keySet());
 
-            // Get membership status from multiple possible variables
-            boolean existingMember = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
-                                   Boolean.TRUE.equals(variables.get("SignedUp"));
-            boolean newMember = Boolean.TRUE.equals(variables.get("becomeMember")) ||
-                              Boolean.TRUE.equals(variables.get("SigningUp"));
+        // CRITICAL: Look ONLY at the current form submission values, ignore any previous state
+        // These values directly reflect what boxes are currently checked
+        boolean isExistingMember = Boolean.TRUE.equals(variables.get("SignedUp"));
+        boolean wantsToBeMember = Boolean.TRUE.equals(variables.get("SigningUp"));
 
-            // Set membership status based on either existing or new membership
-            boolean membershipStatus = existingMember || newMember;
+        // Set default MemberCheck value
+        boolean memberCheckResult = true;
 
-            // Default MemberCheck to true for this gateway (we normally want to proceed)
-            boolean memberCheckResult = true;
+        // Get customer name for potential new membership
+        String customerName = getStringValue(variables, ProcessVariables.CUSTOMER_NAME, "CustomerName", "name");
 
-            // Only check membership number validation if they claim to be an existing member
-            if (existingMember) {
-                String membershipNumber = getStringValue(variables, "MembershipNumber");
+        logger.info("Form state - Existing member box checked: {}, New member box checked: {}",
+                    isExistingMember, wantsToBeMember);
 
-                if (membershipNumber != null && membershipCheckService.validateMembershipNumber(membershipNumber)) {
-                    // Valid membership - proceed
-                    memberCheckResult = true;
-                    logger.info("Valid membership number confirmed: {}", membershipNumber);
-                } else {
-                    // Invalid membership number - don't proceed, show form again
-                    memberCheckResult = false;
-                    logger.warn("Invalid membership number: {}", membershipNumber);
-                }
+        // Handle the three possible cases based on current form state:
+
+        // CASE 1: User checked "I am an existing member"
+        if (isExistingMember) {
+            // Since this box is checked, we MUST validate the membership number
+            String membershipNumber = getStringValue(variables, "MembershipNumber");
+            memberCheckResult = membershipNumber != null &&
+                               membershipCheckService.validateMembershipNumber(membershipNumber);
+
+            if (memberCheckResult) {
+                logger.info("Valid membership number confirmed: {}", membershipNumber);
+            } else {
+                logger.warn("Invalid membership number: {}", membershipNumber);
             }
-            // For new members or non-members, memberCheckResult stays true
+        }
+        // CASE 2: User checked "I want to become a member"
+        else if (wantsToBeMember) {
+            // Always allow to proceed when they want to become a member
+            memberCheckResult = true;
+        }
+        // CASE 3: User checked neither box
+        else {
+            // Always allow non-members to proceed
+            memberCheckResult = true;
+        }
 
-            // Simple flat deposit amount
-            double deposit = 150.0;
+        // Simple flat deposit amount
+        double deposit = 150.0;
 
-            // Apply discount for members if applicable
-            // (In this demo, we keep it flat, but you could modify this for members)
+        logger.info("Calculated deposit: {}", String.format("%.2f", deposit));
+        logger.info("MemberCheck result: {}", memberCheckResult);
 
-            logger.info("Calculated deposit: {}", String.format("%.2f", deposit));
-            logger.info("Customer is member: {}", membershipStatus);
-            logger.info("Existing member: {}, New member: {}", existingMember, newMember);
-            logger.info("MemberCheck result: {}", memberCheckResult);
+        // Create output variables - start with a clean slate
+        HashMap<String, Object> resultVariables = new HashMap<>();
 
-            // Store process instance key for message correlation
-            String processInstanceKey = String.valueOf(job.getProcessInstanceKey());
+        // Set base variables
+        resultVariables.put(ProcessVariables.DEPOSIT_AMOUNT, deposit);
+        resultVariables.put("MemberCheck", memberCheckResult);
+        resultVariables.put(ProcessVariables.PROCESS_INSTANCE_KEY, String.valueOf(job.getProcessInstanceKey()));
 
-            // Create output variables
-            HashMap<String, Object> resultVariables = new HashMap<>();
-            resultVariables.put(ProcessVariables.DEPOSIT_AMOUNT, deposit);
-            resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus); // Pass along final membership status
-            resultVariables.put(ProcessVariables.PROCESS_INSTANCE_KEY, processInstanceKey);
+        // CRITICAL: Always set membership flags based on CURRENT form state
+        resultVariables.put("SignedUp", isExistingMember);
+        resultVariables.put("SigningUp", wantsToBeMember);
 
-            // Set MemberCheck for the gateway condition
-            resultVariables.put("MemberCheck", memberCheckResult);
+        // Set overall member status
+        boolean finalMemberStatus = false;
 
-            // Keep original membership fields for backward compatibility
-            if (variables.containsKey("SignedUp")) {
-                resultVariables.put("SignedUp", existingMember);
-            }
-            if (variables.containsKey("SigningUp")) {
-                resultVariables.put("SigningUp", newMember);
-            }
+        // Determine if they should be treated as a member
+        if (isExistingMember && memberCheckResult) {
+            // Valid existing member
+            finalMemberStatus = true;
 
-            // Preserve membership number if it exists
+            // Preserve their membership number
             if (variables.containsKey("MembershipNumber")) {
                 resultVariables.put("MembershipNumber", variables.get("MembershipNumber"));
             }
-
-            // Preserve vehicle information - try all possible field names
-            String vehicleMake = getStringValue(variables, ProcessVariables.VEHICLE_MAKE, "vehicleMake", "Make");
-            String vehicleModel = getStringValue(variables, ProcessVariables.VEHICLE_MODEL, "vehicleModel", "Model");
-            String faultDescription = getStringValue(variables,
-                    ProcessVariables.FAULT_DESCRIPTION, "extraDetails", "faultDescription", "description");
-            String breakdownLocation = getStringValue(variables,
-                    ProcessVariables.BREAKDOWN_LOCATION, "VehicleLocation", "location");
-            String towInfoAdditional = getStringValue(variables,
-                    "towInfoAdditional", "extraInfo", "additionalInfo", "towInfo");
-
-            // Store variables with consistent names
-            resultVariables.put(ProcessVariables.VEHICLE_MAKE, vehicleMake);
-            resultVariables.put(ProcessVariables.VEHICLE_MODEL, vehicleModel);
-            resultVariables.put(ProcessVariables.FAULT_DESCRIPTION, faultDescription);
-            resultVariables.put(ProcessVariables.BREAKDOWN_LOCATION, breakdownLocation);
-            resultVariables.put("towInfoAdditional", towInfoAdditional);
-
-            // Also preserve with original field names
-            if (variables.containsKey("extraDetails")) {
-                resultVariables.put("extraDetails", faultDescription);
-            }
-            if (variables.containsKey("VehicleLocation")) {
-                resultVariables.put("VehicleLocation", breakdownLocation);
-            }
-            if (variables.containsKey("extraInfo")) {
-                resultVariables.put("extraInfo", towInfoAdditional);
-            }
-
-            // Preserve breakdown status
-            if (variables.containsKey("Breakdown")) {
-                resultVariables.put("Breakdown", variables.get("Breakdown"));
-            }
-
-            // Preserve customer information
-            String customerName = getStringValue(variables, ProcessVariables.CUSTOMER_NAME, "CustomerName", "name");
-            String customerEmail = getStringValue(variables, ProcessVariables.CUSTOMER_EMAIL, "CustomerEmail", "email");
-
-            if (customerName != null) {
-                resultVariables.put(ProcessVariables.CUSTOMER_NAME, customerName);
-            }
-            if (customerEmail != null) {
-                resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
-            }
-
-            // Complete the job
-            client.newCompleteCommand(job.getKey())
-                  .variables(resultVariables)
-                  .send()
-                  .exceptionally((throwable -> {
-                      logger.error("Failed to complete deposit calculation", throwable);
-                      throw new RuntimeException("Could not complete deposit calculation", throwable);
-                  }));
-
-        } catch (Exception e) {
-            // Handle errors
-            logger.error("Error calculating deposit: {}", e.getMessage(), e);
-            client.newFailCommand(job.getKey())
-                  .retries(job.getRetries() - 1)
-                  .errorMessage("Error calculating deposit: " + e.getMessage())
-                  .send();
         }
+        else if (wantsToBeMember) {
+            // Wants to be a new member - could generate number here if needed
+            finalMemberStatus = true;
+        }
+
+        resultVariables.put(ProcessVariables.IS_MEMBER, finalMemberStatus);
+
+        // Preserve vehicle and customer information
+        preserveCustomerAndVehicleInfo(variables, resultVariables);
+
+        // Complete the job
+        client.newCompleteCommand(job.getKey())
+              .variables(resultVariables)
+              .send()
+              .exceptionally((throwable -> {
+                  logger.error("Failed to complete deposit calculation", throwable);
+                  throw new RuntimeException("Could not complete deposit calculation", throwable);
+              }));
+
+    } catch (Exception e) {
+        // Handle errors
+        logger.error("Error calculating deposit: {}", e.getMessage(), e);
+        client.newFailCommand(job.getKey())
+              .retries(job.getRetries() - 1)
+              .errorMessage("Error calculating deposit: " + e.getMessage())
+              .send();
     }
+}
 
     /**
      * Worker to calculate final price with member discount
@@ -876,12 +828,13 @@ public class Worker {
 
             // Get repair cost and membership status - check all possible field names
             // Look for RepairCosts first (from form), then fallback to repairCost
-            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST, 500.0);
+            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST,
+                    500.0);
 
             // Check multiple fields for membership status
             boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
-                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
-                                     Boolean.TRUE.equals(variables.get("SigningUp"));
+                    Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                    Boolean.TRUE.equals(variables.get("SigningUp"));
 
             // Apply 10% discount for members
             double discountPercentage = membershipStatus ? 10.0 : 0.0;
@@ -944,19 +897,19 @@ public class Worker {
 
             // Complete the job
             client.newCompleteCommand(job.getKey())
-                  .variables(resultVariables)
-                  .send()
-                  .exceptionally((throwable -> {
-                      logger.error("Failed to complete price calculation", throwable);
-                      throw new RuntimeException("Could not complete price calculation", throwable);
-                  }));
+                    .variables(resultVariables)
+                    .send()
+                    .exceptionally((throwable -> {
+                        logger.error("Failed to complete price calculation", throwable);
+                        throw new RuntimeException("Could not complete price calculation", throwable);
+                    }));
 
         } catch (Exception e) {
             // Handle errors
             client.newFailCommand(job.getKey())
-                  .retries(job.getRetries() - 1)
-                  .errorMessage("Error calculating price: " + e.getMessage())
-                  .send();
+                    .retries(job.getRetries() - 1)
+                    .errorMessage("Error calculating price: " + e.getMessage())
+                    .send();
         }
     }
 
@@ -976,7 +929,8 @@ public class Worker {
                 logger.info("Variable: {} = {}", key, value);
             });
 
-            // Get approval value from the form data - prioritize QuoteApprovalForm as specified
+            // Get approval value from the form data - prioritize QuoteApprovalForm as
+            // specified
             Boolean approved = false; // Default to false
 
             // Check for QuoteApprovalForm first (new approach)
@@ -988,7 +942,7 @@ public class Worker {
                 if (formValue instanceof String) {
                     approved = "true".equals(formValue);
                 } else if (formValue instanceof Boolean) {
-                    approved = (Boolean)formValue;
+                    approved = (Boolean) formValue;
                 }
             }
             // Fall back to legacy approaches if needed
@@ -1026,8 +980,10 @@ public class Worker {
             resultVariables.put(ProcessVariables.FAULT_DESCRIPTION, faultDescription);
 
             // Preserve cost information
-            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST, 0.0);
-            double finalPrice = getNumberValue(variables, ProcessVariables.FINAL_PRICE, ProcessVariables.TOTAL_PRICE, repairCost);
+            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST,
+                    0.0);
+            double finalPrice = getNumberValue(variables, ProcessVariables.FINAL_PRICE, ProcessVariables.TOTAL_PRICE,
+                    repairCost);
 
             resultVariables.put(ProcessVariables.REPAIR_COST, repairCost);
             resultVariables.put(ProcessVariables.REPAIR_COSTS, repairCost);
@@ -1043,8 +999,8 @@ public class Worker {
 
             // Preserve membership status across all possible field names
             boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
-                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
-                                     Boolean.TRUE.equals(variables.get("SigningUp"));
+                    Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                    Boolean.TRUE.equals(variables.get("SigningUp"));
 
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
@@ -1069,25 +1025,26 @@ public class Worker {
                 resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
             }
 
-            // Send message to notify of approval (this could be used for future receive tasks)
+            // Send message to notify of approval (this could be used for future receive
+            // tasks)
             Map<String, Object> messageVariables = new HashMap<>();
             messageVariables.put(ProcessVariables.QUOTE_APPROVED, approved);
             messageVariables.put("approvalTimestamp", System.currentTimeMillis());
 
             // Complete the job first
             client.newCompleteCommand(job.getKey())
-                  .variables(resultVariables)
-                  .send()
-                  .join();
+                    .variables(resultVariables)
+                    .send()
+                    .join();
 
             // Then send the message
             sendMessage(MessageNames.APPROVAL, processInstanceKey, messageVariables);
 
         } catch (Exception e) {
             client.newFailCommand(job.getKey())
-                  .retries(job.getRetries() - 1)
-                  .errorMessage("Error processing approval: " + e.getMessage())
-                  .send();
+                    .retries(job.getRetries() - 1)
+                    .errorMessage("Error processing approval: " + e.getMessage())
+                    .send();
         }
     }
 
@@ -1123,8 +1080,10 @@ public class Worker {
             resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
 
             // Preserve cost information
-            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST, 0.0);
-            double finalPrice = getNumberValue(variables, ProcessVariables.FINAL_PRICE, ProcessVariables.TOTAL_PRICE, repairCost);
+            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST,
+                    0.0);
+            double finalPrice = getNumberValue(variables, ProcessVariables.FINAL_PRICE, ProcessVariables.TOTAL_PRICE,
+                    repairCost);
 
             resultVariables.put(ProcessVariables.REPAIR_COST, repairCost);
             resultVariables.put(ProcessVariables.REPAIR_COSTS, repairCost);
@@ -1133,8 +1092,8 @@ public class Worker {
 
             // Preserve membership status
             boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
-                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
-                                     Boolean.TRUE.equals(variables.get("SigningUp"));
+                    Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                    Boolean.TRUE.equals(variables.get("SigningUp"));
 
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
@@ -1143,7 +1102,8 @@ public class Worker {
                 resultVariables.put("MembershipNumber", variables.get("MembershipNumber"));
             }
 
-            // Send message to notify of work completion (this could be used for future receive tasks)
+            // Send message to notify of work completion (this could be used for future
+            // receive tasks)
             Map<String, Object> messageVariables = new HashMap<>();
             messageVariables.put("worksCompleted", true);
             messageVariables.put("completionTimestamp", System.currentTimeMillis());
@@ -1151,18 +1111,18 @@ public class Worker {
 
             // Complete the job first
             client.newCompleteCommand(job.getKey())
-                  .variables(resultVariables)
-                  .send()
-                  .join();
+                    .variables(resultVariables)
+                    .send()
+                    .join();
 
             // Then send the message
             sendMessage(MessageNames.WORKS_COMPLETE, processInstanceKey, messageVariables);
 
         } catch (Exception e) {
             client.newFailCommand(job.getKey())
-                  .retries(job.getRetries() - 1)
-                  .errorMessage("Error processing repair completion: " + e.getMessage())
-                  .send();
+                    .retries(job.getRetries() - 1)
+                    .errorMessage("Error processing repair completion: " + e.getMessage())
+                    .send();
         }
     }
 
@@ -1186,11 +1146,10 @@ public class Worker {
 
             // Create a booking link
             String bookingLink = calendlyService.createBookingLink(
-                customerEmail,
-                customerName,
-                vehicleMake + " " + vehicleModel,
-                "Vehicle collection after repair"
-            );
+                    customerEmail,
+                    customerName,
+                    vehicleMake + " " + vehicleModel,
+                    "Vehicle collection after repair");
 
             logger.info("Sending repair completion notification to {} with booking link", customerEmail);
             logger.info("Booking link: {}", bookingLink);
@@ -1216,8 +1175,10 @@ public class Worker {
             resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
 
             // Preserve cost information
-            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST, 0.0);
-            double finalPrice = getNumberValue(variables, ProcessVariables.FINAL_PRICE, ProcessVariables.TOTAL_PRICE, repairCost);
+            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST,
+                    0.0);
+            double finalPrice = getNumberValue(variables, ProcessVariables.FINAL_PRICE, ProcessVariables.TOTAL_PRICE,
+                    repairCost);
 
             resultVariables.put(ProcessVariables.REPAIR_COST, repairCost);
             resultVariables.put(ProcessVariables.REPAIR_COSTS, repairCost);
@@ -1236,19 +1197,19 @@ public class Worker {
 
             // Complete the task
             client.newCompleteCommand(job.getKey())
-                  .variables(resultVariables)
-                  .send()
-                  .exceptionally((throwable -> {
-                      logger.error("Error completing NotifyBookAppointment", throwable);
-                      throw new RuntimeException("Failed to notify customer", throwable);
-                  }));
+                    .variables(resultVariables)
+                    .send()
+                    .exceptionally((throwable -> {
+                        logger.error("Error completing NotifyBookAppointment", throwable);
+                        throw new RuntimeException("Failed to notify customer", throwable);
+                    }));
 
         } catch (Exception e) {
             logger.error("Error in NotifyBookAppointment worker", e);
             client.newFailCommand(job.getKey())
-                  .retries(job.getRetries() - 1)
-                  .errorMessage("Error notifying customer: " + e.getMessage())
-                  .send();
+                    .retries(job.getRetries() - 1)
+                    .errorMessage("Error notifying customer: " + e.getMessage())
+                    .send();
         }
     }
 
@@ -1272,11 +1233,10 @@ public class Worker {
 
             // Create a booking link for vehicle pickup (no repair)
             String bookingLink = calendlyService.createBookingLink(
-                customerEmail,
-                customerName,
-                vehicleMake + " " + vehicleModel,
-                "Vehicle collection without repair"
-            );
+                    customerEmail,
+                    customerName,
+                    vehicleMake + " " + vehicleModel,
+                    "Vehicle collection without repair");
 
             logger.info("Offering collection times to {} via Calendly", customerEmail);
             logger.info("Booking link: {}", bookingLink);
@@ -1300,8 +1260,10 @@ public class Worker {
             resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
 
             // Preserve cost information
-            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST, 0.0);
-            double finalPrice = getNumberValue(variables, ProcessVariables.FINAL_PRICE, ProcessVariables.TOTAL_PRICE, repairCost);
+            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST,
+                    0.0);
+            double finalPrice = getNumberValue(variables, ProcessVariables.FINAL_PRICE, ProcessVariables.TOTAL_PRICE,
+                    repairCost);
 
             resultVariables.put(ProcessVariables.REPAIR_COST, repairCost);
             resultVariables.put(ProcessVariables.REPAIR_COSTS, repairCost);
@@ -1324,19 +1286,19 @@ public class Worker {
 
             // Complete the task
             client.newCompleteCommand(job.getKey())
-                  .variables(resultVariables)
-                  .send()
-                  .exceptionally((throwable -> {
-                      logger.error("Error completing OfferCollectionTimes", throwable);
-                      throw new RuntimeException("Failed to offer collection times", throwable);
-                  }));
+                    .variables(resultVariables)
+                    .send()
+                    .exceptionally((throwable -> {
+                        logger.error("Error completing OfferCollectionTimes", throwable);
+                        throw new RuntimeException("Failed to offer collection times", throwable);
+                    }));
 
         } catch (Exception e) {
             logger.error("Error in OfferCollectionTimes worker", e);
             client.newFailCommand(job.getKey())
-                  .retries(job.getRetries() - 1)
-                  .errorMessage("Error offering collection times: " + e.getMessage())
-                  .send();
+                    .retries(job.getRetries() - 1)
+                    .errorMessage("Error offering collection times: " + e.getMessage())
+                    .send();
         }
     }
 
@@ -1360,7 +1322,7 @@ public class Worker {
 
             // Check if we already have booking information (from a webhook)
             boolean hasBookingInfo = variables.containsKey("bookingConfirmed") &&
-                                   (Boolean)variables.get("bookingConfirmed");
+                    (Boolean) variables.get("bookingConfirmed");
 
             // Get the process instance key for message correlation
             String processInstanceKey = String.valueOf(job.getProcessInstanceKey());
@@ -1390,8 +1352,10 @@ public class Worker {
             bookingInfo.put(ProcessVariables.PROCESS_INSTANCE_KEY, processInstanceKey);
 
             // Preserve cost information
-            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST, 0.0);
-            double finalPrice = getNumberValue(variables, ProcessVariables.FINAL_PRICE, ProcessVariables.TOTAL_PRICE, repairCost);
+            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST,
+                    0.0);
+            double finalPrice = getNumberValue(variables, ProcessVariables.FINAL_PRICE, ProcessVariables.TOTAL_PRICE,
+                    repairCost);
 
             bookingInfo.put(ProcessVariables.REPAIR_COST, repairCost);
             bookingInfo.put(ProcessVariables.REPAIR_COSTS, repairCost);
@@ -1400,8 +1364,8 @@ public class Worker {
 
             // Preserve membership status
             boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
-                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
-                                     Boolean.TRUE.equals(variables.get("SigningUp"));
+                    Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                    Boolean.TRUE.equals(variables.get("SigningUp"));
 
             bookingInfo.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
@@ -1418,19 +1382,19 @@ public class Worker {
 
             // Complete the task with booking info
             client.newCompleteCommand(job.getKey())
-                  .variables(bookingInfo)
-                  .send()
-                  .exceptionally((throwable -> {
-                      logger.error("Error completing ProcessBooking", throwable);
-                      throw new RuntimeException("Failed to process booking", throwable);
-                  }));
+                    .variables(bookingInfo)
+                    .send()
+                    .exceptionally((throwable -> {
+                        logger.error("Error completing ProcessBooking", throwable);
+                        throw new RuntimeException("Failed to process booking", throwable);
+                    }));
 
         } catch (Exception e) {
             logger.error("Error in ProcessBooking worker", e);
             client.newFailCommand(job.getKey())
-                  .retries(job.getRetries() - 1)
-                  .errorMessage("Error processing booking: " + e.getMessage())
-                  .send();
+                    .retries(job.getRetries() - 1)
+                    .errorMessage("Error processing booking: " + e.getMessage())
+                    .send();
         }
     }
 
@@ -1453,7 +1417,8 @@ public class Worker {
                 // If the value is "Satisfied", mark as satisfied
                 satisfied = "Satisfied".equals(satisfactionValue);
 
-                logger.info("Customer satisfaction status determined as: {}", satisfied ? "Satisfied" : "Not Satisfied");
+                logger.info("Customer satisfaction status determined as: {}",
+                        satisfied ? "Satisfied" : "Not Satisfied");
             }
             // Fallback to older field names if present
             else if (variables.containsKey("Satisfied")) {
@@ -1493,8 +1458,10 @@ public class Worker {
             resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
 
             // Preserve cost information
-            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST, 0.0);
-            double finalPrice = getNumberValue(variables, ProcessVariables.FINAL_PRICE, ProcessVariables.TOTAL_PRICE, repairCost);
+            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST,
+                    0.0);
+            double finalPrice = getNumberValue(variables, ProcessVariables.FINAL_PRICE, ProcessVariables.TOTAL_PRICE,
+                    repairCost);
 
             resultVariables.put(ProcessVariables.REPAIR_COST, repairCost);
             resultVariables.put(ProcessVariables.REPAIR_COSTS, repairCost);
@@ -1517,22 +1484,21 @@ public class Worker {
 
             // Complete the task
             client.newCompleteCommand(job.getKey())
-                .variables(resultVariables)
-                .send()
-                .exceptionally((throwable -> {
-                    logger.error("Error processing satisfaction form", throwable);
-                    throw new RuntimeException("Failed to process satisfaction form", throwable);
-                }));
+                    .variables(resultVariables)
+                    .send()
+                    .exceptionally((throwable -> {
+                        logger.error("Error processing satisfaction form", throwable);
+                        throw new RuntimeException("Failed to process satisfaction form", throwable);
+                    }));
 
         } catch (Exception e) {
             logger.error("Error in satisfaction form processing", e);
             client.newFailCommand(job.getKey())
-                .retries(job.getRetries() - 1)
-                .errorMessage("Error processing satisfaction form: " + e.getMessage())
-                .send();
+                    .retries(job.getRetries() - 1)
+                    .errorMessage("Error processing satisfaction form: " + e.getMessage())
+                    .send();
         }
     }
-
 
     /**
      * Worker to send collection time notification (legacy implementation)
@@ -1577,8 +1543,10 @@ public class Worker {
             resultVariables.put(ProcessVariables.PROCESS_INSTANCE_KEY, processInstanceKey);
 
             // Preserve cost information
-            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST, 0.0);
-            double finalPrice = getNumberValue(variables, ProcessVariables.FINAL_PRICE, ProcessVariables.TOTAL_PRICE, repairCost);
+            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST,
+                    0.0);
+            double finalPrice = getNumberValue(variables, ProcessVariables.FINAL_PRICE, ProcessVariables.TOTAL_PRICE,
+                    repairCost);
 
             resultVariables.put(ProcessVariables.REPAIR_COST, repairCost);
             resultVariables.put(ProcessVariables.REPAIR_COSTS, repairCost);
@@ -1587,8 +1555,8 @@ public class Worker {
 
             // Preserve membership status
             boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
-                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
-                                     Boolean.TRUE.equals(variables.get("SigningUp"));
+                    Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                    Boolean.TRUE.equals(variables.get("SigningUp"));
 
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
@@ -1605,18 +1573,18 @@ public class Worker {
 
             // Complete the job first
             client.newCompleteCommand(job.getKey())
-                  .variables(resultVariables)
-                  .send()
-                  .join();
+                    .variables(resultVariables)
+                    .send()
+                    .join();
 
             // Then send the message
             sendMessage(MessageNames.COLLECTION_ARRANGED, processInstanceKey, messageVariables);
 
         } catch (Exception e) {
             client.newFailCommand(job.getKey())
-                  .retries(job.getRetries() - 1)
-                  .errorMessage("Error arranging collection: " + e.getMessage())
-                  .send();
+                    .retries(job.getRetries() - 1)
+                    .errorMessage("Error arranging collection: " + e.getMessage())
+                    .send();
         }
     }
 
@@ -1629,15 +1597,16 @@ public class Worker {
             Map<String, Object> variables = job.getVariablesAsMap();
 
             // Get repair cost - check multiple variables
-            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST, 500.0);
+            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST,
+                    500.0);
 
             // Calculate final price - if not already set
             double finalPrice = getNumberValue(variables, ProcessVariables.FINAL_PRICE, 0.0);
             if (finalPrice < 0.01) {
                 // Check if there's a discount to apply
                 boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
-                                         Boolean.TRUE.equals(variables.get("SignedUp")) ||
-                                         Boolean.TRUE.equals(variables.get("SigningUp"));
+                        Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                        Boolean.TRUE.equals(variables.get("SigningUp"));
                 double discountPercentage = membershipStatus ? 10.0 : 0.0;
                 finalPrice = repairCost * (1 - (discountPercentage / 100.0));
             }
@@ -1683,8 +1652,8 @@ public class Worker {
 
             // Preserve membership status
             boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
-                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
-                                     Boolean.TRUE.equals(variables.get("SigningUp"));
+                    Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                    Boolean.TRUE.equals(variables.get("SigningUp"));
 
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
@@ -1709,18 +1678,18 @@ public class Worker {
 
             // Complete the job first
             client.newCompleteCommand(job.getKey())
-                  .variables(resultVariables)
-                  .send()
-                  .join();
+                    .variables(resultVariables)
+                    .send()
+                    .join();
 
             // Then send the message
             sendMessage(MessageNames.QUOTE_NOTIFICATION, processInstanceKey, messageVariables);
 
         } catch (Exception e) {
             client.newFailCommand(job.getKey())
-                  .retries(job.getRetries() - 1)
-                  .errorMessage("Error sending quote: " + e.getMessage())
-                  .send();
+                    .retries(job.getRetries() - 1)
+                    .errorMessage("Error sending quote: " + e.getMessage())
+                    .send();
         }
     }
 
@@ -1766,8 +1735,10 @@ public class Worker {
             }
 
             // Preserve cost information
-            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST, 0.0);
-            double finalPrice = getNumberValue(variables, ProcessVariables.FINAL_PRICE, ProcessVariables.TOTAL_PRICE, repairCost);
+            double repairCost = getNumberValue(variables, ProcessVariables.REPAIR_COSTS, ProcessVariables.REPAIR_COST,
+                    0.0);
+            double finalPrice = getNumberValue(variables, ProcessVariables.FINAL_PRICE, ProcessVariables.TOTAL_PRICE,
+                    repairCost);
 
             resultVariables.put(ProcessVariables.REPAIR_COST, repairCost);
             resultVariables.put(ProcessVariables.REPAIR_COSTS, repairCost);
@@ -1776,8 +1747,8 @@ public class Worker {
 
             // Preserve membership status
             boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
-                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
-                                     Boolean.TRUE.equals(variables.get("SigningUp"));
+                    Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                    Boolean.TRUE.equals(variables.get("SigningUp"));
 
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
@@ -1800,21 +1771,22 @@ public class Worker {
 
             // Complete the job first
             client.newCompleteCommand(job.getKey())
-                  .variables(resultVariables)
-                  .send()
-                  .join();
+                    .variables(resultVariables)
+                    .send()
+                    .join();
 
             // Then send the message
             sendMessage(MessageNames.WORKS_COMPLETE, processInstanceKey, messageVariables);
 
         } catch (Exception e) {
             client.newFailCommand(job.getKey())
-                  .retries(job.getRetries() - 1)
-                  .errorMessage("Error notifying work completion: " + e.getMessage())
-                  .send();
+                    .retries(job.getRetries() - 1)
+                    .errorMessage("Error notifying work completion: " + e.getMessage())
+                    .send();
         }
     }
-/**
+
+    /**
      * Worker to send tow request
      */
     @ZeebeWorker(type = "TowRequest")
@@ -1840,7 +1812,7 @@ public class Worker {
             // Combine vehicle information
             String vehicleDetails = vehicleMake + " " + vehicleModel;
             if (faultDescription != null && !faultDescription.isEmpty() &&
-                !faultDescription.equals("No description provided")) {
+                    !faultDescription.equals("No description provided")) {
                 vehicleDetails += " - " + faultDescription;
             }
 
@@ -1894,8 +1866,8 @@ public class Worker {
 
             // Preserve membership status
             boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
-                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
-                                     Boolean.TRUE.equals(variables.get("SigningUp"));
+                    Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                    Boolean.TRUE.equals(variables.get("SigningUp"));
 
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
@@ -1919,30 +1891,32 @@ public class Worker {
 
             // Complete the job first
             client.newCompleteCommand(job.getKey())
-                  .variables(resultVariables)
-                  .send()
-                  .join();
+                    .variables(resultVariables)
+                    .send()
+                    .join();
 
             // Then send the message
             sendMessage(MessageNames.TOW_REQUEST, processInstanceKey, messageVariables);
 
         } catch (Exception e) {
             client.newFailCommand(job.getKey())
-                  .retries(job.getRetries() - 1)
-                  .errorMessage("Error sending tow request: " + e.getMessage())
-                  .send();
+                    .retries(job.getRetries() - 1)
+                    .errorMessage("Error sending tow request: " + e.getMessage())
+                    .send();
         }
     }
 
     /**
      * Helper method to get string value from multiple possible variable names
      * Fixed to avoid null pointer exceptions
+     *
      * @param variables The variable map
-     * @param keys Multiple possible keys to try
+     * @param keys      Multiple possible keys to try
      * @return The first non-null value found, or null if none found
      */
     private String getStringValue(Map<String, Object> variables, String... keys) {
-        if (keys == null || keys.length == 0) return null;
+        if (keys == null || keys.length == 0)
+            return null;
 
         // Try each key in order
         for (String key : keys) {
@@ -1958,7 +1932,7 @@ public class Worker {
 
         // If we get here and there's a default value provided as the last key
         // Check if the last key could be a default value (no dots in it)
-        String lastKey = keys[keys.length-1];
+        String lastKey = keys[keys.length - 1];
         if (lastKey != null && !lastKey.contains(".")) {
             // The last key might be a default value, not a key to search for
             return lastKey;
@@ -1969,12 +1943,15 @@ public class Worker {
 
     /**
      * Helper method to get a numeric value from multiple possible variable names
-     * @param variables The variable map
-     * @param keys Multiple possible keys to try
+     *
+     * @param variables    The variable map
+     * @param keys         Multiple possible keys to try
      * @param defaultValue Default value if none found
-     * @return The first non-null numeric value found, or the default value if none found
+     * @return The first non-null numeric value found, or the default value if none
+     *         found
      */
-    private double getNumberValue(Map<String, Object> variables, String firstKey, String secondKey, double defaultValue) {
+    private double getNumberValue(Map<String, Object> variables, String firstKey, String secondKey,
+            double defaultValue) {
         // Try first key
         if (firstKey != null && variables.containsKey(firstKey) && variables.get(firstKey) != null) {
             Object value = variables.get(firstKey);
