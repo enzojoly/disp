@@ -745,6 +745,25 @@ public class Worker {
             // Set membership status based on either existing or new membership
             boolean membershipStatus = existingMember || newMember;
 
+            // Default MemberCheck to true for this gateway (we normally want to proceed)
+            boolean memberCheckResult = true;
+
+            // Only check membership number validation if they claim to be an existing member
+            if (existingMember) {
+                String membershipNumber = getStringValue(variables, "MembershipNumber");
+
+                if (membershipNumber != null && membershipCheckService.validateMembershipNumber(membershipNumber)) {
+                    // Valid membership - proceed
+                    memberCheckResult = true;
+                    logger.info("Valid membership number confirmed: {}", membershipNumber);
+                } else {
+                    // Invalid membership number - don't proceed, show form again
+                    memberCheckResult = false;
+                    logger.warn("Invalid membership number: {}", membershipNumber);
+                }
+            }
+            // For new members or non-members, memberCheckResult stays true
+
             // Simple flat deposit amount
             double deposit = 150.0;
 
@@ -754,6 +773,7 @@ public class Worker {
             logger.info("Calculated deposit: {}", String.format("%.2f", deposit));
             logger.info("Customer is member: {}", membershipStatus);
             logger.info("Existing member: {}, New member: {}", existingMember, newMember);
+            logger.info("MemberCheck result: {}", memberCheckResult);
 
             // Store process instance key for message correlation
             String processInstanceKey = String.valueOf(job.getProcessInstanceKey());
@@ -763,6 +783,9 @@ public class Worker {
             resultVariables.put(ProcessVariables.DEPOSIT_AMOUNT, deposit);
             resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus); // Pass along final membership status
             resultVariables.put(ProcessVariables.PROCESS_INSTANCE_KEY, processInstanceKey);
+
+            // Set MemberCheck for the gateway condition
+            resultVariables.put("MemberCheck", memberCheckResult);
 
             // Keep original membership fields for backward compatibility
             if (variables.containsKey("SignedUp")) {
@@ -826,11 +849,13 @@ public class Worker {
                   .variables(resultVariables)
                   .send()
                   .exceptionally((throwable -> {
+                      logger.error("Failed to complete deposit calculation", throwable);
                       throw new RuntimeException("Could not complete deposit calculation", throwable);
                   }));
 
         } catch (Exception e) {
             // Handle errors
+            logger.error("Error calculating deposit: {}", e.getMessage(), e);
             client.newFailCommand(job.getKey())
                   .retries(job.getRetries() - 1)
                   .errorMessage("Error calculating deposit: " + e.getMessage())
@@ -922,6 +947,7 @@ public class Worker {
                   .variables(resultVariables)
                   .send()
                   .exceptionally((throwable -> {
+                      logger.error("Failed to complete price calculation", throwable);
                       throw new RuntimeException("Could not complete price calculation", throwable);
                   }));
 
@@ -1788,8 +1814,7 @@ public class Worker {
                   .send();
         }
     }
-
-    /**
+/**
      * Worker to send tow request
      */
     @ZeebeWorker(type = "TowRequest")
@@ -1867,125 +1892,124 @@ public class Worker {
                 resultVariables.put(ProcessVariables.CUSTOMER_EMAIL, customerEmail);
             }
 
-// Preserve membership status
-        boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
-                                 Boolean.TRUE.equals(variables.get("SignedUp")) ||
-                                 Boolean.TRUE.equals(variables.get("SigningUp"));
+            // Preserve membership status
+            boolean membershipStatus = Boolean.TRUE.equals(variables.get(ProcessVariables.IS_MEMBER)) ||
+                                     Boolean.TRUE.equals(variables.get("SignedUp")) ||
+                                     Boolean.TRUE.equals(variables.get("SigningUp"));
 
-        resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
+            resultVariables.put(ProcessVariables.IS_MEMBER, membershipStatus);
 
-        // Preserve original membership fields
-        if (variables.containsKey("SignedUp")) {
-            resultVariables.put("SignedUp", variables.get("SignedUp"));
-        }
-        if (variables.containsKey("SigningUp")) {
-            resultVariables.put("SigningUp", variables.get("SigningUp"));
-        }
-        if (variables.containsKey("MembershipNumber")) {
-            resultVariables.put("MembershipNumber", variables.get("MembershipNumber"));
-        }
-
-        // Send message for the tow request (for potential future receive tasks)
-        Map<String, Object> messageVariables = new HashMap<>();
-        messageVariables.put("towRequested", true);
-        messageVariables.put("towRequestTimestamp", System.currentTimeMillis());
-        messageVariables.put("vehicleDetails", vehicleDetails);
-        messageVariables.put("breakdownLocation", location);
-
-        // Complete the job first
-        client.newCompleteCommand(job.getKey())
-              .variables(resultVariables)
-              .send()
-              .join();
-
-        // Then send the message
-        sendMessage(MessageNames.TOW_REQUEST, processInstanceKey, messageVariables);
-
-    } catch (Exception e) {
-        client.newFailCommand(job.getKey())
-              .retries(job.getRetries() - 1)
-              .errorMessage("Error sending tow request: " + e.getMessage())
-              .send();
-    }
-}
-
-/**
- * Helper method to get string value from multiple possible variable names
- * Fixed to avoid null pointer exceptions
- * @param variables The variable map
- * @param keys Multiple possible keys to try
- * @return The first non-null value found, or null if none found
- */
-private String getStringValue(Map<String, Object> variables, String... keys) {
-    if (keys == null || keys.length == 0) return null;
-
-    // Try each key in order
-    for (String key : keys) {
-        if (key != null && variables.containsKey(key) && variables.get(key) != null) {
-            Object value = variables.get(key);
-            if (value instanceof String) {
-                return (String) value;
+            // Preserve original membership fields
+            if (variables.containsKey("SignedUp")) {
+                resultVariables.put("SignedUp", variables.get("SignedUp"));
             }
-            // Convert non-string to string if needed
-            return String.valueOf(value);
+            if (variables.containsKey("SigningUp")) {
+                resultVariables.put("SigningUp", variables.get("SigningUp"));
+            }
+            if (variables.containsKey("MembershipNumber")) {
+                resultVariables.put("MembershipNumber", variables.get("MembershipNumber"));
+            }
+
+            // Send message for the tow request (for potential future receive tasks)
+            Map<String, Object> messageVariables = new HashMap<>();
+            messageVariables.put("towRequested", true);
+            messageVariables.put("towRequestTimestamp", System.currentTimeMillis());
+            messageVariables.put("vehicleDetails", vehicleDetails);
+            messageVariables.put("breakdownLocation", location);
+
+            // Complete the job first
+            client.newCompleteCommand(job.getKey())
+                  .variables(resultVariables)
+                  .send()
+                  .join();
+
+            // Then send the message
+            sendMessage(MessageNames.TOW_REQUEST, processInstanceKey, messageVariables);
+
+        } catch (Exception e) {
+            client.newFailCommand(job.getKey())
+                  .retries(job.getRetries() - 1)
+                  .errorMessage("Error sending tow request: " + e.getMessage())
+                  .send();
         }
     }
 
-    // If we get here and there's a default value provided as the last key
-    // Check if the last key could be a default value (no dots in it)
-    String lastKey = keys[keys.length-1];
-    if (lastKey != null && !lastKey.contains(".")) {
-        // The last key might be a default value, not a key to search for
-        return lastKey;
-    }
+    /**
+     * Helper method to get string value from multiple possible variable names
+     * Fixed to avoid null pointer exceptions
+     * @param variables The variable map
+     * @param keys Multiple possible keys to try
+     * @return The first non-null value found, or null if none found
+     */
+    private String getStringValue(Map<String, Object> variables, String... keys) {
+        if (keys == null || keys.length == 0) return null;
 
-    return null;
-}
-
-/**
- * Helper method to get a numeric value from multiple possible variable names
- * @param variables The variable map
- * @param keys Multiple possible keys to try
- * @param defaultValue Default value if none found
- * @return The first non-null numeric value found, or the default value if none found
- */
-private double getNumberValue(Map<String, Object> variables, String firstKey, String secondKey, double defaultValue) {
-    // Try first key
-    if (firstKey != null && variables.containsKey(firstKey) && variables.get(firstKey) != null) {
-        Object value = variables.get(firstKey);
-        if (value instanceof Number) {
-            return ((Number) value).doubleValue();
-        } else if (value instanceof String) {
-            try {
-                return Double.parseDouble((String) value);
-            } catch (NumberFormatException e) {
-                // Not a valid number, continue to next key
+        // Try each key in order
+        for (String key : keys) {
+            if (key != null && variables.containsKey(key) && variables.get(key) != null) {
+                Object value = variables.get(key);
+                if (value instanceof String) {
+                    return (String) value;
+                }
+                // Convert non-string to string if needed
+                return String.valueOf(value);
             }
         }
+
+        // If we get here and there's a default value provided as the last key
+        // Check if the last key could be a default value (no dots in it)
+        String lastKey = keys[keys.length-1];
+        if (lastKey != null && !lastKey.contains(".")) {
+            // The last key might be a default value, not a key to search for
+            return lastKey;
+        }
+
+        return null;
     }
 
-    // Try second key
-    if (secondKey != null && variables.containsKey(secondKey) && variables.get(secondKey) != null) {
-        Object value = variables.get(secondKey);
-        if (value instanceof Number) {
-            return ((Number) value).doubleValue();
-        } else if (value instanceof String) {
-            try {
-                return Double.parseDouble((String) value);
-            } catch (NumberFormatException e) {
-                // Not a valid number, return default
+    /**
+     * Helper method to get a numeric value from multiple possible variable names
+     * @param variables The variable map
+     * @param keys Multiple possible keys to try
+     * @param defaultValue Default value if none found
+     * @return The first non-null numeric value found, or the default value if none found
+     */
+    private double getNumberValue(Map<String, Object> variables, String firstKey, String secondKey, double defaultValue) {
+        // Try first key
+        if (firstKey != null && variables.containsKey(firstKey) && variables.get(firstKey) != null) {
+            Object value = variables.get(firstKey);
+            if (value instanceof Number) {
+                return ((Number) value).doubleValue();
+            } else if (value instanceof String) {
+                try {
+                    return Double.parseDouble((String) value);
+                } catch (NumberFormatException e) {
+                    // Not a valid number, continue to next key
+                }
             }
         }
+
+        // Try second key
+        if (secondKey != null && variables.containsKey(secondKey) && variables.get(secondKey) != null) {
+            Object value = variables.get(secondKey);
+            if (value instanceof Number) {
+                return ((Number) value).doubleValue();
+            } else if (value instanceof String) {
+                try {
+                    return Double.parseDouble((String) value);
+                } catch (NumberFormatException e) {
+                    // Not a valid number, return default
+                }
+            }
+        }
+
+        return defaultValue;
     }
 
-    return defaultValue;
-}
-
-/**
- * Overloaded helper to get a numeric value from a single key
- */
-private double getNumberValue(Map<String, Object> variables, String key, double defaultValue) {
-    return getNumberValue(variables, key, null, defaultValue);
-}
-
+    /**
+     * Overloaded helper to get a numeric value from a single key
+     */
+    private double getNumberValue(Map<String, Object> variables, String key, double defaultValue) {
+        return getNumberValue(variables, key, null, defaultValue);
+    }
 }
