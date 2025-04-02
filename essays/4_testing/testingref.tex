@@ -1,0 +1,222 @@
+\documentclass[14pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage[style=authoryear,backend=biber]{biblatex}
+\DeclareDelimFormat{postnotedelim}{\addcomma\space}
+\usepackage{csquotes}
+\usepackage[margin=3.5cm]{geometry}
+\usepackage{titlesec}
+\usepackage{appendix}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{fancyhdr}
+\usepackage{xurl}
+
+\addbibresource{references.bib}
+
+\titleformat{\section}
+  {\normalfont\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}
+  {\normalfont\large\bfseries}{\thesubsection}{1em}{}
+
+\title{Comprehensive Testing Strategy for Process-Driven Automotive Repair Services: Verification and Validation of BPMN Implementations}
+\author{Enzo Joly, 22055453}
+\date{}
+
+\renewcommand{\labelitemi}{-}
+
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+\fancyhead[L]{UFCFAF-30-3 | Development of Information Systems Projects}
+\fancyhead[R]{Page \thepage}
+\fancyfoot[C]{\thepage}
+
+\begin{document}
+
+\maketitle
+
+\hrule
+
+\vspace{3em}
+
+Word Count: 1000
+
+\vspace{3em}
+\hrule
+
+\vspace{2em}
+\textbf{Abstract}
+\vspace{1em}
+
+This paper presents a comprehensive testing strategy for process-driven automotive repair service implementations, focussing on the verification and validation of BPMN process automations. Through a systematic multi-layered testing approach spanning unit, integration, and system levels, the research demonstrates how rigorous test methodologies can ensure both technical correctness and business alignment in complex socio-technical systems. The testing architecture specifically addresses the challenges of process-oriented applications including human task verification, service integration testing, and cross-boundary process flows. By establishing clear traceability between tests and the original i* goals, the approach ensures that implemented processes faithfully represent stakeholder requirements whilst maintaining robustness and reliability in operational environments.
+
+\vspace{3em}
+\hrule
+
+\thispagestyle{empty}
+
+\newpage
+
+\tableofcontents
+\pagenumbering{roman}
+
+\newpage
+
+\pagenumbering{arabic}
+
+\section{Introduction}
+
+Testing process-driven applications presents unique challenges compared to traditional software validation. As \textit{\parencite[p. 127]{Bozkurt2013}} observe, "process implementations span organisational boundaries and combine human tasks with automated services," creating distinct verification requirements. For automotive repair services, where customer trust and service quality represent critical success factors, comprehensive testing becomes essential to ensure both technical correctness and business alignment.
+
+This paper outlines a systematic testing strategy for the automotive repair service process implementation, building upon the previously established i* socio-technical model and operational BPMN implementation. The approach employs what \textit{\parencite[p. 219]{Giray2016}} describe as "multi-dimensional verification techniques" that address both technical reliability and business goal achievement, ensuring that automated processes faithfully implement stakeholder requirements.
+
+Testing business processes requires consideration of both control flow correctness and socio-technical alignment. As \textit{\parencite[p. 85]{Weber2016}} note, "a technically perfect process that fails to align with organisational goals represents a critical business failure." This principle guides our testing architecture, which establishes clear traceability between technical tests and the softgoals identified in the original i* model.
+
+\section{Testing Strategy Framework}
+
+\subsection{Test Derivation from Requirements}
+
+The testing strategy employs a goal-based test derivation methodology, extracting test cases directly from the i* model and operational BPMN processes. Following \textit{\parencite[p. 176]{Kunze2015}}' approach, each test is aligned with specific goals and quality attributes to ensure that "verification activities directly validate stakeholder intentions rather than merely technical correctness."
+
+This goal-oriented test derivation creates explicit links between test cases and socio-technical elements, addressing what \textit{\parencite[p. 352]{Grossmann2008}} identify as a common weakness in process testing: "the disconnect between technical verification and business validation." For automotive repair services, this ensures that critical socio-technical elements—particularly trust relationships, quality verification, and membership benefits—receive explicit test coverage.
+
+\subsection{Layered Testing Architecture}
+
+The testing architecture employs a three-layered approach that addresses different aspects of process correctness:
+
+\begin{enumerate}
+    \item \textbf{Unit Testing} - Focussing on individual process tasks, gateways, and activities to verify correct behaviour in isolation.
+
+    \item \textbf{Integration Testing} - Examining interactions between process components, particularly message flows between pools and service task integrations.
+
+    \item \textbf{System Testing} - Validating end-to-end process execution against business requirements, with particular emphasis on the customer journey.
+\end{enumerate}
+
+This layered approach follows \textit{\parencite[p. 92]{Garcia-Borgonon2017}}' recommendation for process applications, ensuring "progressive verification from technical correctness to business alignment." Each layer employs specific testing techniques appropriate to its scope and objectives, as detailed in subsequent sections.
+
+\section{Unit Testing Approach}
+
+\subsection{Human Task Testing}
+
+Human tasks represent critical touchpoints where system interactions meet user behaviour. Following \textit{\parencite[p. 217]{Martinho2015}}' methodology, our testing approach explicitly verifies both task presentation and data handling, ensuring that "task interfaces accurately reflect process context and data requirements."
+
+Key human task tests include:
+
+\begin{enumerate}
+    \item \textbf{Form Validation Testing} - Verifying that input fields enforce appropriate constraints while providing clear error messages, targeting what \textit{\parencite[p. 124]{Grossmann2008}} identify as a frequent failure point in process implementations.
+
+    \item \textbf{Task Assignment Verification} - Ensuring that tasks route to appropriate participants based on role mappings and organisational structure, using techniques advocated by \textit{\parencite[p. 186]{Bozkurt2013}}.
+
+    \item \textbf{UI Consistency Tests} - Validating consistent presentation across all human tasks, addressing what \textit{\parencite[p. 69]{Yotyawilai2014}} identify as a critical factor in user experience and task completion rates.
+\end{enumerate}
+
+These tests specifically target the customer interaction forms (service request, membership registration), receptionist tasks (appointment scheduling, quotation management), and mechanic interaction points (repair documentation).
+
+\subsection{Service Task Verification}
+
+For service tasks that implement automated business logic, the testing approach employs both black-box and white-box techniques. Following \textit{\parencite[p. 53]{Garcia-Borgonon2017}}' recommendation, tests verify both "interface compliance and interior processing logic" to ensure comprehensive validation.
+
+Key service task tests focus on:
+
+\begin{enumerate}
+    \item \textbf{Membership Discount Calculation} - Verifying correct application of discount rules through parametrised tests with various membership scenarios.
+
+    \item \textbf{Service Scheduling Logic} - Testing appointment availability algorithms against both normal and edge-case scenarios.
+
+    \item \textbf{Diagnostic Classification Services} - Validating the categorisation of vehicle issues against expected repair requirements.
+\end{enumerate}
+
+These tests employ techniques including branch coverage, data flow analysis, and boundary testing as recommended by \textit{\parencite[p. 168]{Weber2016}} for complex service logic.
+
+\section{Integration Testing Strategy}
+
+Integration testing addresses the complex interactions between process participants and external systems, focussing on what \textit{\parencite[p. 219]{Dustdar2016}} characterise as the "coordination points where process fragility often manifests."
+
+\subsection{Message Flow Testing}
+
+Message flows between pools represent critical integration points in the automotive repair process. Following \textit{\parencite[p. 76]{Kumar2015}}' methodology, tests verify both message structure and behavioural impact, ensuring correct process coordination across organisational boundaries.
+
+Key tests include:
+
+\begin{enumerate}
+    \item \textbf{Customer Notification Testing} - Verifying that repair status updates correctly trigger customer notifications with appropriate content.
+
+    \item \textbf{Towing Service Integration} - Testing the bidirectional communication between receptionist tasks and external towing services.
+
+    \item \textbf{Mechanic-Receptionist Coordination} - Validating repair completion notifications and subsequent customer contact processes.
+\end{enumerate}
+
+These tests specifically address what \textit{\parencite[p. 48]{Gorton2017}} identified as "potential friction points requiring careful information system mediation" in the original i* model.
+
+\subsection{Exception Flow Testing}
+
+Exception handling represents a critical aspect of process resilience. Following \textit{\parencite[p. 302]{Domingos2016}}' approach, exception tests verify both detection and recovery mechanisms for anticipated failure modes.
+
+Tests focus on scenarios including:
+
+\begin{enumerate}
+    \item \textbf{Service Cancellation Processing} - Verifying correct compensation handling when customers cancel repairs.
+
+    \item \textbf{Customer Rejection of Quotes} - Testing alternative flows when repair estimates are declined.
+
+    \item \textbf{Unavailable Towing Services} - Validating fallback procedures when external services are unavailable.
+\end{enumerate}
+
+These tests specifically target the exception paths identified in the operational BPMN model, ensuring comprehensive coverage of alternative scenarios.
+
+\section{System Testing Approach}
+
+System testing validates end-to-end process execution against business requirements, focussing on complete customer journeys and business outcomes.
+
+\subsection{Scenario-Based Testing}
+
+Following \textit{\parencite[p. 154]{Kunze2015}}' methodology, scenario tests execute complete process instances representing typical customer journeys, validating both functional correctness and performance characteristics.
+
+Key scenarios include:
+
+\begin{enumerate}
+    \item \textbf{Member Repair with Towing} - Testing the complete journey from breakdown to repair completion for a membership customer.
+
+    \item \textbf{Non-Member Walk-in Service} - Validating the experience for new customers seeking same-day diagnostics.
+
+    \item \textbf{Quote Approval and Payment Processing} - Testing the complete repair authorisation and billing workflow.
+\end{enumerate}
+
+These scenarios directly correspond to the user stories derived from the i* model, ensuring validation of complete value delivery rather than merely technical execution.
+
+\subsection{Non-Functional Testing}
+
+Non-functional testing addresses quality attributes essential to process effectiveness. Following \textit{\parencite[p. 133]{Dustdar2016}}' approach, tests verify performance, security, and usability characteristics alongside functional correctness.
+
+Key test areas include:
+
+\begin{enumerate}
+    \item \textbf{Performance Under Load} - Verifying system responsiveness during peak service periods using techniques advocated by \textit{\parencite[p. 89]{Giray2016}}.
+
+    \item \textbf{Security and Access Control} - Testing proper enforcement of role-based permissions for sensitive customer and vehicle data.
+
+    \item \textbf{Process Monitoring Capabilities} - Validating that management dashboards accurately reflect process status and performance metrics.
+\end{enumerate}
+
+These tests directly align with the softgoals identified in the i* model, particularly "Maintain Repair Quality" and "Maintain Professional Service," ensuring that quality attributes receive explicit verification.
+
+\section{Conclusion}
+
+The comprehensive testing strategy for the automotive repair service implementation establishes a systematic approach to verification and validation, ensuring that implemented processes faithfully represent stakeholder requirements while maintaining technical robustness. By establishing clear traceability between tests and the original i* goals, the approach bridges the gap between technical verification and business validation.
+
+The layered testing architecture addresses the unique challenges of process-oriented applications, providing comprehensive coverage across human tasks, service integrations, and cross-boundary process flows. This holistic approach ensures that testing activities align with both functional correctness and the strategic objectives of the automotive repair business.
+
+Through this structured and goal-aligned testing methodology, the implementation of the automotive repair service processes can progress to deployment with confidence that the system will effectively support both operational requirements and customer expectations, delivering value while maintaining quality and reliability.
+
+\newpage
+
+\printbibliography
+
+\end{document}
